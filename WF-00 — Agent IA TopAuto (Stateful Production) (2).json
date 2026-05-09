@@ -1,0 +1,767 @@
+{
+  "name": "WF-00 — Agent IA TopAuto (Stateful Production)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "whatsapp-topauto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        448,
+        2752
+      ],
+      "id": "cba1d2c4-726a-42aa-ad5c-42922b16c5b0",
+      "name": "01 — Webhook GET",
+      "webhookId": "9329ddde-dea4-460d-919f-a364595621be"
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $input.first().json.query || {};\nif (q['hub.verify_token'] === 'topauto2024secret') {\n  return [{ json: { response: q['hub.challenge'] } }];\n}\nreturn [{ json: { response: 'Forbidden' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        2752
+      ],
+      "id": "0c9e7ed7-fc3c-4dc7-a5dc-99449378d748",
+      "name": "02 — Verifier Meta"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        928,
+        2752
+      ],
+      "id": "ab2b24be-d199-4b5e-84e3-49572ca05d3f",
+      "name": "03 — Repondre GET"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-topauto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        448,
+        3152
+      ],
+      "id": "e2aedd91-1fa7-4842-9a7e-dd38a68f6369",
+      "name": "04 — Webhook POST",
+      "webhookId": "6f874cea-39f1-49a5-bcb5-b5e217b61c33"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nif (!body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {\n  return [{ json: { skip: true, raison: 'pas_de_message' } }];\n}\n\nconst value = body.entry[0].changes[0].value;\nconst message = value.messages[0];\nconst contact = value.contacts?.[0];\n\nif (!['text', 'interactive'].includes(message.type)) {\n  return [{ json: { skip: true, raison: 'type_non_supporte_' + message.type } }];\n}\n\nlet texte = '';\nlet btn_id_recu = null;\n\nconst boutons_map = {\n  'btn_achat':        'Je veux acheter un vehicule Renault ou Dacia et obtenir un devis',\n  'btn_sav':          'Je veux prendre rendez-vous a l atelier pour entretien ou reparation',\n  'btn_documents':    'J ai besoin d un document administratif : main levee, facture ou carte grise',\n  'btn_localisation': 'Donnez-moi l adresse et les horaires de la concession',\n  'btn_conseiller':   'Je veux etre contacte par un conseiller commercial immediatement',\n  'btn_brochure':     'Je veux voir la gamme complete des vehicules disponibles'\n};\n\nif (message.type === 'text') {\n  texte = (message.text?.body || '').trim().replace(/\\s+/g, ' ');\n} else if (message.type === 'interactive') {\n  btn_id_recu = message.interactive?.button_reply?.id || '';\n  texte = boutons_map[btn_id_recu] || message.interactive?.button_reply?.title || btn_id_recu;\n}\n\nif (!texte) {\n  return [{ json: { skip: true, raison: 'texte_vide' } }];\n}\n\nconst telephone = message.from;\nconst message_id = message.id;\nconst timestamp = new Date(parseInt(message.timestamp) * 1000).toISOString();\nconst phone_number_id = value.metadata?.phone_number_id || '1031404513398168';\nconst nom = contact?.profile?.name || 'Client';\n\nconst texte_upper = texte.toUpperCase().trim();\nconst est_reset = ['MENU', 'RETOUR', 'ACCUEIL', 'HOME', 'RESTART', 'RECOMMENCER'].includes(texte_upper);\n\nreturn [{\n  json: {\n    telephone,\n    nom,\n    texte,\n    texte_upper,\n    btn_id_recu,\n    message_id,\n    timestamp,\n    phone_number_id,\n    est_reset,\n    skip: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        3152
+      ],
+      "id": "62e16896-e88a-435b-a229-c75a69c0ac52",
+      "name": "05 — Extraire Message"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1168,
+        2992
+      ],
+      "id": "423ad1b9-7339-44c0-b2d5-919d3413857e",
+      "name": "07 — Ignorer"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 08 — GESTION SESSION (Static Data n8n)\n// ============================================================\n// On utilise le Static Data de n8n comme memoire de session\n// Accessible via $getWorkflowStaticData('node') ou 'global'\n// ============================================================\nconst d = $input.first().json;\nconst telephone = d.telephone;\n\n// Acces a la memoire globale du workflow\nconst memoria = $getWorkflowStaticData('global');\n\n// Initialiser le store si vide\nif (!memoria.sessions) {\n  memoria.sessions = {};\n}\n\nconst SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes\nconst maintenant = Date.now();\n\n// Recuperer session existante\nlet session = memoria.sessions[telephone] || null;\n\n// Verifier expiration session\nif (session && (maintenant - session.last_interaction) > SESSION_TIMEOUT_MS) {\n  session = null; // Session expiree -> reset\n}\n\n// Reset manuel\nif (d.est_reset) {\n  session = null;\n}\n\n// Anti-duplicate: verifier si message_id deja traite\nif (session && session.last_message_id === d.message_id) {\n  return [{ json: { skip_duplicate: true } }];\n}\n\n// Determiner etat de la session\nlet est_nouveau = false;\nlet etat_actuel = 'ACTIF';\nlet langue = null;\n\nif (!session) {\n  // NOUVELLE SESSION\n  est_nouveau = true;\n  session = {\n    telephone,\n    nom: d.nom,\n    langue: null,\n    etat: 'ATTENTE_LANGUE',\n    service_actuel: null,\n    last_interaction: maintenant,\n    last_message_id: d.message_id,\n    created_at: maintenant\n  };\n} else {\n  // SESSION EXISTANTE — mettre a jour\n  session.last_interaction = maintenant;\n  session.last_message_id = d.message_id;\n  etat_actuel = session.etat || 'ACTIF';\n  langue = session.langue;\n}\n\n// Sauvegarder session\n// Reset forcé si session corrompue\nif (session && !['ATTENTE_LANGUE', 'ATTENTE_MENU', 'ACTIF'].includes(session.etat)) {\n  session = null;\n  est_nouveau = true;\n  session = {\n    telephone,\n    nom: d.nom,\n    langue: null,\n    etat: 'ATTENTE_LANGUE',\n    service_actuel: null,\n    last_interaction: maintenant,\n    last_message_id: d.message_id,\n    created_at: maintenant\n  };\n}\n\nreturn [{\n  json: {\n    ...d,\n    session,\n    est_nouveau,\n    etat_actuel: session.etat,\n    langue_session: session.langue,\n    skip_duplicate: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        3232
+      ],
+      "id": "0ce1c523-0a63-4133-a7c5-633018e3b14b",
+      "name": "08 — Gestion Session"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.skip_duplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        3232
+      ],
+      "id": "e3fd27e1-a949-4865-b2e4-f5c99e313b47",
+      "name": "09 — Anti-Duplicate ?"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1648,
+        3072
+      ],
+      "id": "6a4f7821-dcc9-4d29-95ac-05e9e9ecc05e",
+      "name": "10 — Ignorer Duplicate"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6d40e5c0-1528-4797-a375-0bd89a63f10a",
+                    "leftValue": "=={{ $json.btn_id_recu }}",
+                    "rightValue": "lang_",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CHOIX_LANGUE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3a1894a3-2d67-4626-9567-313057d5a22b",
+                    "leftValue": "=={{ $json.btn_id_recu }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "BOUTON_SERVICE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "r1",
+                    "leftValue": "={{ $json.etat_actuel }}",
+                    "rightValue": "ATTENTE_LANGUE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ATTENTE_LANGUE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "r3",
+                    "leftValue": "={{ $json.etat_actuel }}",
+                    "rightValue": "ACTIF",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ACTIF"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        3312
+      ],
+      "id": "bca8bd1f-a636-49b4-b5e7-a9da55b76cdf",
+      "name": "11 — Router Etat Session"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 12 — TRAITEMENT ATTENTE_LANGUE\n// Envoyer bienvenue + boutons langue (UNE SEULE FOIS)\n// ============================================================\nconst d = $input.first().json;\nconst TOKEN = 'EAASp22f3wJMBReW4uqzfgQxRKkuAWpzkP6aPWWTgOxZBgZAecn92XYhEUlFUz0ZC7Cky2ysUSwFANSe7XvejpZCSdj6hWnKObWZAWY9xmfaupumrgbxjIbGBAkQj4XdUOlyxW2vZAIbZAqzmmCRofchxBkL1WalX171pmLVXh3N2xVpVnWdf7OQg9gY9kpLdkF7tgtc8T6oJr2JpIbYQmZBXlvDjnV3LfviCxQVGY1VJqtE37TPA0jZBqRbqF5uTi289aXSKbVqLZAtnSQ2mJWcPK9';\nconst url = 'https://graph.facebook.com/v20.0/' + d.phone_number_id + '/messages';\nconst h = { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };\n\ntry {\n  // Message bienvenue\n  await this.helpers.httpRequest({\n    method: 'POST', url, headers: h,\n    body: JSON.stringify({\n      messaging_product: 'whatsapp', to: d.telephone, type: 'text',\n      text: { body: 'Bienvenue chez Top Auto Mohammedia, concessionnaire officiel Renault et Dacia.\\n\\n\\u0645\\u0631\\u062d\\u0628\\u0627 \\u0628\\u0643\\u0645 \\u0641\\u064a \\u062a\\u0648\\u0628 \\u0623\\u0648\\u062a\\u0648 \\u0627\\u0644\\u0645\\u062d\\u0645\\u062f\\u064a\\u0629.\\n\\nChoisissez votre langue / \\u0627\\u062e\\u062a\\u0631 \\u0644\\u063a\\u062a\\u0643' }\n    })\n  });\n  await new Promise(r => setTimeout(r, 800));\n  // Boutons langue\n  await this.helpers.httpRequest({\n    method: 'POST', url, headers: h,\n    body: JSON.stringify({\n      messaging_product: 'whatsapp', to: d.telephone, type: 'interactive',\n      interactive: {\n        type: 'button',\n        body: { text: 'Langue / \\u0627\\u0644\\u0644\\u063a\\u0629' },\n        action: { buttons: [\n          { type: 'reply', reply: { id: 'lang_fr', title: 'Francais' } },\n          { type: 'reply', reply: { id: 'lang_ar', title: '\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629' } }\n        ]}\n      }\n    })\n  });\n  return [{ json: { action_effectuee: 'bienvenue_envoye', telephone: d.telephone } }];\n} catch(e) {\n  return [{ json: { action_effectuee: 'erreur_bienvenue', erreur: e.message, telephone: d.telephone } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        3120
+      ],
+      "id": "66d8ba71-3492-4c55-ad59-7aea8fcea82e",
+      "name": "12 — Envoyer Bienvenue Langue",
+      "executeOnce": false,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 13 — TRAITEMENT CHOIX LANGUE -> PASSER A ATTENTE_MENU\n// ============================================================\nconst d = $input.first().json;\nconst TOKEN = 'EAASp22f3wJMBRRosGvFpd5qDMauaJztNr5qE6ky7Psd1FxarY7ZCSBtiZAZBxZAiSzVA0djekrC8GbSu2GngypjWJXqXFZCE07tjrkC5fU8nXoFvRQIUO8nBiCTEypRTYGVIpY8BiEfnVuDQBeQAZBAXgSjlAdSYAnhtRD5A56G57Y4bFuCHg6sCKAZAZCn5fAYvyeOuoXcs4hywNjM6eBpvYiuZBBx2uz4ViQIy6JxZALbnBBWjPZAPe456uhyZAGGsMgZAl9A70EuKz5UwdpH72DoMC';\nconst url = 'https://graph.facebook.com/v20.0/' + d.phone_number_id + '/messages';\nconst h = { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };\n\n// Determiner langue choisie\nlet langue = 'FR';\nif (d.btn_id_recu === 'lang_ar') {\n  langue = 'AR';\n} else if (d.btn_id_recu === 'lang_fr') {\n  langue = 'FR';\n} else {\n  // Bouton de service -> conserver la langue deja choisie en session\n  langue = d.langue_session || 'FR';\n}\n\n// Mettre a jour session\nconst memoria = $getWorkflowStaticData('global');\nif (memoria.sessions && memoria.sessions[d.telephone]) {\n  memoria.sessions[d.telephone].langue = langue;\n  // Si c'est un choix de langue -> passer a ATTENTE_MENU\n// Si c'est un bouton de service -> passer directement a ACTIF\nif (d.btn_id_recu === 'lang_fr' || d.btn_id_recu === 'lang_ar') {\n  memoria.sessions[d.telephone].etat = 'ATTENTE_MENU';\n} else {\n  memoria.sessions[d.telephone].etat = 'ACTIF';\n}\n}\n\n// Envoyer menu principal\nconst b1_fr = [\n  { id: 'btn_achat',       title: 'Acheter vehicule' },\n  { id: 'btn_sav',         title: 'Service apres-vente' },\n  { id: 'btn_documents',   title: 'Documents SAV' }\n];\nconst b2_fr = [\n  { id: 'btn_localisation', title: 'Localisation' },\n  { id: 'btn_conseiller',   title: 'Un conseiller' },\n  { id: 'btn_brochure',     title: 'Voir catalogue' }\n];\nconst b1_ar = [\n  { id: 'btn_achat',       title: '\\u0634\\u0631\\u0627\\u0621 \\u0633\\u064a\\u0627\\u0631\\u0629' },\n  { id: 'btn_sav',         title: '\\u062e\\u062f\\u0645\\u0629 \\u0645\\u0627 \\u0628\\u0639\\u062f \\u0627\\u0644\\u0628\\u064a\\u0639' },\n  { id: 'btn_documents',   title: '\\u0648\\u062b\\u0627\\u0626\\u0642 \\u0625\\u062f\\u0627\\u0631\\u064a\\u0629' }\n];\nconst b2_ar = [\n  { id: 'btn_localisation', title: '\\u0645\\u0648\\u0642\\u0639\\u0646\\u0627' },\n  { id: 'btn_conseiller',   title: '\\u0645\\u0633\\u062a\\u0634\\u0627\\u0631' },\n  { id: 'btn_brochure',     title: '\\u0643\\u062a\\u0627\\u0644\\u0648\\u062c' }\n];\n\nconst b1 = langue === 'AR' ? b1_ar : b1_fr;\nconst b2 = langue === 'AR' ? b2_ar : b2_fr;\nconst msg_accueil = langue === 'AR'\n  ? '\\u0623\\u0647\\u0644\\u0627 \\u0628\\u0643\\u0645. \\u0643\\u064a\\u0641 \\u064a\\u0645\\u0643\\u0646\\u0646\\u064a \\u0645\\u0633\\u0627\\u0639\\u062f\\u062a\\u0643 \\u0627\\u0644\\u064a\\u0648\\u0645 \\u061f'\n  : 'Bonjour. Comment puis-je vous aider aujourd hui ?';\n\ntry {\n  await this.helpers.httpRequest({\n    method: 'POST', url, headers: h,\n    body: JSON.stringify({ messaging_product:'whatsapp', to:d.telephone, type:'interactive',\n      interactive:{ type:'button', body:{text: msg_accueil + '\\n\\n(1/2)'},\n        action:{buttons: b1.map(b=>({type:'reply',reply:{id:b.id,title:b.title}}))}\n      }\n    })\n  });\n  await new Promise(r => setTimeout(r, 800));\n  await this.helpers.httpRequest({\n    method: 'POST', url, headers: h,\n    body: JSON.stringify({ messaging_product:'whatsapp', to:d.telephone, type:'interactive',\n      interactive:{ type:'button', body:{text: langue === 'AR' ? '(2/2)' : '(2/2)'},\n        action:{buttons: b2.map(b=>({type:'reply',reply:{id:b.id,title:b.title}}))}\n      }\n    })\n  });\n  return [{ json: { action_effectuee: 'menu_envoye', langue, telephone: d.telephone } }];\n} catch(e) {\n  return [{ json: { action_effectuee: 'erreur_menu', erreur: e.message, telephone: d.telephone } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        3280
+      ],
+      "id": "380ea58b-f57c-4c51-9c8d-53403c500d85",
+      "name": "13 — Traiter Choix Langue et Menu"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"max_tokens\": 900,\n  \"temperature\": 0.3,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es l assistant virtuel officiel de Top Auto Mohammedia (concessionnaire Renault et Dacia au Maroc). Tu es deja en conversation avec le client. NE JAMAIS commencer par Bonjour bienvenue ou presenter la concession. Reponds DIRECTEMENT et IMMEDIATEMENT a ce que le client demande.\\n\\n[ETABLISSEMENT]\\nAdresse : Q.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia\\nTel Renault : 05 23 30 31 94 | Tel Dacia : 05 23 30 31 95\\nEmail : contact@top-auto.ma\\nHoraires : Lun-Ven 8h00-18h30 | Sam Renault 8h30-13h00 | Sam Dacia 8h30-15h00 | Dim ferme\\nGPS : 33.683384 N, 7.409769 W | Maps : https://maps.google.com/?q=33.683384,-7.409769\\nFacebook : @topauto | Instagram : @top_auto_mohammedia\\n\\n[GAMME DACIA]\\nSpring electrique (24.3kWh AC7kW DC40kW 308L V2L 70/100ch Essential/Extreme) | Sandero Streetway (2026 ecran10p 1.0SCe65ch/1.0TCe100ch/1.5dCi102ch Essential-Journey) | Sandero Stepway (17cm Starkle 1.0TCe100ch/1.5dCi102ch CVT) | Logan (coffre528L 2026 1.0SCe65ch/1.0TCe100ch/1.5dCi102ch Essential-Journey) | Jogger (5ou7pl 160-1807L 1.0TCe100ch/1.5dCi102ch/HEV140ch 2026) | Duster 2025 (8p camera CarPlay 1.5dCi115ch/1.3TCe130ch Essential-Extreme) | Bigster 2025 (grandSUV +23cm toitPano 1.5dCi115ch/HEV155ch Essential-Journey)\\n\\n[GAMME RENAULT VP]\\nClio5 (1.0TCe100ch/1.5BluedCi115ch/ETech145ch Equilibre-EspritAlpine) | Clio6 (nouvelleGen) | Captur (OpenRLink 10p 1.0TCe100ch/ETech145ch) | R5ETech (electrique 40kWh120ch/52kWh150ch 400km DC100kW) | Express (diesel 95ch/115ch) | MeganeSedан (coffre475L diesel 1.5BluedCi115ch 9p) | MeganeETech (60kWh 450km DC130kW 220ch 12p) | Arkana (ETech145ch 4.5L) | Austral (ETech200ch OpenRLink 2025) | Kardian (SOMACA ecran8/10p 360 1.0TCe100ch/1.5BluedCi102ch)\\n\\n[GAMME RENAULT VU]\\nExpressVan (800kg 3.3m3 dCi75ch) | Trafic (L1/L2 H1/H2 1400kg 2.0dCi150ch Combi9pl) | Master (L1-L4 H1-H3 8-17m3 1700kg 2.3dCi145/180ch)\\n\\n[SAV]\\nAgree Renault/Dacia. WinTech/OBD. Mecanique/Carrosserie/Peinture. Devis gratuit 24h.\\nRDV Renault : concessionnaire.renault.ma/top-auto-mohammedia.html\\nRDV Dacia : reseau.dacia.ma/top-auto-mohammedia.html\\n\\n[FINANCEMENT Mobilize]\\nCredit 12-72mois | ZEN | Easy | Gratuit 0% | LOA\\nAssurances : RC / Tous Risques / Perte Totale / Deces-Invalidite / garantie 5 ans\\n\\n[DOCUMENTS SAV]\\nMain levee : CIN/passeport + contrat vente + attestation fin credit Mobilize + chassis\\nFacture : CIN/passeport + chassis + motif + numero client\\nCarte grise : prenom+nom + CIN + chassis\\n\\n[COMPORTEMENT DIRECT OBLIGATOIRE]\\nQuand le client demande le SAV ou atelier -> donner immediatement les deux liens RDV + demander prenom et telephone\\nQuand le client demande un vehicule ou devis -> demander quel modele l interesse\\nQuand le client demande un conseiller -> confirmer transmission et demander prenom et telephone\\nQuand le client demande localisation -> donner adresse complete + GPS + horaires\\nQuand le client demande catalogue -> presenter la gamme Dacia puis Renault brievement\\nQuand le client demande un document SAV -> demander quel type (main levee / facture / carte grise)\\nQuand le client demande financement -> presenter les options disponibles sans chiffres\\nQuand le client donne son prenom et telephone -> confirmer enregistrement et dire qu un conseiller va contacter\\n\\n[REGLES ABSOLUES]\\n1. PRIX : Jamais de prix ni estimation. Script : Pour vous communiquer le meilleur tarif personnalise et verifier la disponibilite, je transmets votre demande a notre equipe. Un conseiller vous contactera. Puis-je noter votre prenom et telephone ?\\n2. RDV ATELIER : Donner les deux liens + collecter prenom et telephone\\n3. DOCUMENTS SAV : Lister justificatifs selon type + collecter prenom / telephone / chassis\\n4. RECLAMATIONS : Ton empathique, ne pas minimiser. Collecter prenom / telephone / immat / description. Reponse garantie 48h ouvrees.\\n5. FINANCEMENT : Presenter options sans taux ni mensualite. Orienter vers conseiller.\\n\\n[LANGUE]\\nCaracteres arabes dans le message -> reponds UNIQUEMENT en arabe\\n[Langue: AR] au debut -> arabe uniquement\\n[Langue: FR] au debut -> francais uniquement\\nPar defaut -> francais\\n\\n[FORMAT REPONSE OBLIGATOIRE]\\nTOUJOURS deux parties separees par |||\\nFormat : TEXTE_VISIBLE_CLIENT|||TAG_INTERNE\\n\\nTAG possible :\\n|||RIEN\\n|||LEAD:prenom=X|tel=X|modele=X|type=commercial\\n|||LEAD:prenom=X|tel=X|vehicule=X|intervention=X|type=sav_atelier\\n|||LEAD:prenom=X|tel=X|chassis=X|type_doc=X|type=sav_document\\n|||LEAD:prenom=X|tel=X|modele=X|type_financement=X|type=financement\\n|||LEAD:prenom=X|tel=X|immat=X|nature=X|description=X|type=reclamation\\n|||FIN\\n\\nREGLES FORMAT STRICTES :\\n- JAMAIS ecrire ||| ou LEAD ou TAG dans le texte visible\\n- Si prenom ou tel manquants ou encore X -> utiliser |||RIEN\\n- Sauvegarder seulement si prenom ET tel sont reels et complets\\n- Terminer chaque reponse par : Merci pour votre confiance. (FR) ou شكرا على ثقتك. (AR)\\n- Aucun emoji\\n- Reponses courtes et directes\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"={{ $json.langue_session ? '[Langue: ' + $json.langue_session + '] ' : '' }}={{ $json.texte }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1888,
+        3472
+      ],
+      "id": "870ad20d-f335-42fc-99af-0c3f036c7792",
+      "name": "14 — Agent IA Groq"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 15 — TRAITER REPONSE GROQ + MISE A JOUR SESSION\n// ============================================================\nconst groq = $input.first().json;\nconst prev = $('08 — Gestion Session').first().json;\n\nconst raw = groq.choices?.[0]?.message?.content || '';\n\nlet texte_client = raw.trim();\nlet tag = 'RIEN';\nlet lead_data = null;\nlet est_fin = false;\n\nconst sep = raw.lastIndexOf('|||');\nif (sep >= 0) {\n  texte_client = raw.substring(0, sep).trim();\n  tag = raw.substring(sep + 3).trim();\n}\n\nif (tag === 'FIN') {\n  est_fin = true;\n} else if (tag.startsWith('LEAD:')) {\n  lead_data = {};\n  tag.replace('LEAD:', '').split('|').forEach(p => {\n    const i = p.indexOf('=');\n    if (i > 0) {\n      const k = p.substring(0, i).trim();\n      const v = p.substring(i + 1).trim();\n      if (k && v && !['X', '', 'null', 'undefined'].includes(v)) {\n        lead_data[k] = v;\n      }\n    }\n  });\n  if (!lead_data.prenom || !lead_data.tel) lead_data = null;\n}\n\n// Nettoyage residus balises\ntexte_client = texte_client\n  .replace(/\\|\\|\\|[\\s\\S]*/g, '')\n  .replace(/LEAD:[\\w=|.\\s\\u0600-\\u06FF]*/g, '')\n  .replace(/\\bFIN\\b/g, '')\n  .replace(/\\bRIEN\\b/g, '')\n  .replace(/\\|\\|\\|/g, '')\n  .trim();\n\nif (!texte_client || texte_client.length < 5) {\n  const lang = prev.langue_session;\n  texte_client = lang === 'AR'\n    ? '\\u0639\\u0630\\u0631\\u0627\\u060c \\u062d\\u062f\\u062b \\u062e\\u0637\\u0623. \\u0627\\u062a\\u0635\\u0644 \\u0628\\u0646\\u0627: 05 23 30 31 94. \\u0634\\u0643\\u0631\\u0627 \\u0639\\u0644\\u0649 \\u062b\\u0642\\u062a\\u0643.'\n    : 'Desolee, une erreur est survenue. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance.';\n}\n\n// Mettre a jour etat session -> ACTIF apres premier echange\nconst memoria = $getWorkflowStaticData('global');\nif (memoria.sessions && memoria.sessions[prev.telephone]) {\n  memoria.sessions[prev.telephone].etat = est_fin ? 'TERMINE' : 'ACTIF';\n  if (lead_data) {\n    memoria.sessions[prev.telephone].dernier_lead = lead_data;\n  }\n}\n\n// Langue depuis session\nconst memoria2 = $getWorkflowStaticData('global');\nconst session_courante = memoria2.sessions?.[prev.telephone] || {};\nconst langue = session_courante.langue || prev.langue_session || 'FR';\n\n// Boutons menu pour reponse suivante (2 messages x 3 boutons)\nconst mk = (to, txt, btns) => JSON.stringify({\n  messaging_product:'whatsapp', to, type:'interactive',\n  interactive:{ type:'button', body:{text:txt},\n    action:{buttons: btns.map(b=>({type:'reply',reply:{id:b.id,title:b.title}}))} }\n});\n\nconst to = prev.telephone;\nconst b1_fr = [{id:'btn_achat',title:'Acheter vehicule'},{id:'btn_sav',title:'Service apres-vente'},{id:'btn_documents',title:'Documents SAV'}];\nconst b2_fr = [{id:'btn_localisation',title:'Localisation'},{id:'btn_conseiller',title:'Un conseiller'},{id:'btn_brochure',title:'Voir catalogue'}];\nconst b1_ar = [{id:'btn_achat',title:'\\u0634\\u0631\\u0627\\u0621 \\u0633\\u064a\\u0627\\u0631\\u0629'},{id:'btn_sav',title:'\\u062e\\u062f\\u0645\\u0629 \\u0645\\u0627 \\u0628\\u0639\\u062f \\u0627\\u0644\\u0628\\u064a\\u0639'},{id:'btn_documents',title:'\\u0648\\u062b\\u0627\\u0626\\u0642'}];\nconst b2_ar = [{id:'btn_localisation',title:'\\u0645\\u0648\\u0642\\u0639\\u0646\\u0627'},{id:'btn_conseiller',title:'\\u0645\\u0633\\u062a\\u0634\\u0627\\u0631'},{id:'btn_brochure',title:'\\u0643\\u062a\\u0627\\u0644\\u0648\\u062c'}];\nconst t1 = langue==='AR'?'\\u0643\\u064a\\u0641 \\u064a\\u0645\\u0643\\u0646\\u0646\\u064a \\u0645\\u0633\\u0627\\u0639\\u062f\\u062a\\u0643 \\u061f':'Comment puis-je vous aider ?';\nconst t2 = langue==='AR'?'\\u062e\\u064a\\u0627\\u0631\\u0627\\u062a \\u0623\\u062e\\u0631\\u0649 :':'Autres options :';\n\nreturn [{\n  json: {\n    telephone: prev.telephone,\n    phone_number_id: prev.phone_number_id,\n    nom: prev.nom,\n    langue,\n    texte_client,\n    lead_data,\n    est_fin,\n    wa_msg: JSON.stringify({messaging_product:'whatsapp',to,type:'text',text:{body:texte_client}}),\n    wa_b1: est_fin ? null : mk(to, t1, langue==='AR'?b1_ar:b1_fr),\n    wa_b2: est_fin ? null : mk(to, t2, langue==='AR'?b2_ar:b2_fr)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        3472
+      ],
+      "id": "814c3cb0-e683-4753-b4c8-daaa4cd160c1",
+      "name": "15 — Preparer Reponse"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 16 — ENVOYER REPONSE + BOUTONS (UNE SEULE FOIS)\n// ============================================================\nconst d = $input.first().json;\nconst TOKEN = 'EAASp22f3wJMBReW4uqzfgQxRKkuAWpzkP6aPWWTgOxZBgZAecn92XYhEUlFUz0ZC7Cky2ysUSwFANSe7XvejpZCSdj6hWnKObWZAWY9xmfaupumrgbxjIbGBAkQj4XdUOlyxW2vZAIbZAqzmmCRofchxBkL1WalX171pmLVXh3N2xVpVnWdf7OQg9gY9kpLdkF7tgtc8T6oJr2JpIbYQmZBXlvDjnV3LfviCxQVGY1VJqtE37TPA0jZBqRbqF5uTi289aXSKbVqLZAtnSQ2mJWcPK9';\nconst url = 'https://graph.facebook.com/v20.0/' + d.phone_number_id + '/messages';\nconst h = { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };\n\ntry {\n  await this.helpers.httpRequest({ method:'POST', url, headers:h, body:d.wa_msg });\n  if (!d.est_fin && d.wa_b1 && d.wa_b2) {\n    await new Promise(r => setTimeout(r, 800));\n    await this.helpers.httpRequest({ method:'POST', url, headers:h, body:d.wa_b1 });\n    await new Promise(r => setTimeout(r, 800));\n    await this.helpers.httpRequest({ method:'POST', url, headers:h, body:d.wa_b2 });\n  }\n} catch(e) {\n  console.error('Erreur envoi:', e.message);\n}\nreturn [{ json: d }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        3472
+      ],
+      "id": "f89d46ec-8d10-4dee-8f26-e9be70e9c47a",
+      "name": "16 — Envoyer Reponse"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.lead_data !== null && $json.lead_data !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2608,
+        3472
+      ],
+      "id": "807a54b0-ced7-4518-91e4-6f0642018666",
+      "name": "17 — Lead Detecte ?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 18 — SAUVEGARDER CRM + NOTIFIER\n// ============================================================\nconst d = $input.first().json;\nconst lead = d.lead_data || {};\nconst type_lead = lead.type || 'commercial';\n\nconst sheets = {\n  'commercial':   'Leads_Commerciaux',\n  'sav_atelier':  'SAV_Atelier',\n  'sav_document': 'SAV_Documents',\n  'financement':  'Financement_Assurance',\n  'reclamation':  'Reclamations'\n};\nconst sheet_name = sheets[type_lead] || 'Leads_Commerciaux';\nconst id_lead = Date.now().toString(36).toUpperCase();\nconst date_maroc = new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Casablanca' });\n\nconst lignes = [\n  '--- ' + type_lead.toUpperCase() + ' | ' + sheet_name + ' ---',\n  'ID : ' + id_lead,\n  'Date : ' + date_maroc,\n  'Client WA : ' + d.telephone,\n  'Nom : ' + (d.nom || 'NC'),\n  'Prenom : ' + (lead.prenom || 'NC'),\n  'Tel : ' + (lead.tel || 'NC'),\n  lead.modele ? 'Modele : ' + lead.modele : null,\n  lead.vehicule ? 'Vehicule : ' + lead.vehicule : null,\n  lead.intervention ? 'Intervention : ' + lead.intervention : null,\n  lead.chassis ? 'Chassis : ' + lead.chassis : null,\n  lead.type_doc ? 'Type doc : ' + lead.type_doc : null,\n  lead.type_financement ? 'Financement : ' + lead.type_financement : null,\n  lead.immat ? 'Immat : ' + lead.immat : null,\n  lead.nature ? 'Nature : ' + lead.nature : null,\n  lead.description ? 'Description : ' + lead.description : null,\n  'Langue : ' + (d.langue || 'FR'),\n  '\\nStatut : ' + (type_lead === 'reclamation' ? 'NOUVEAU — 48h' : 'A RAPPELER')\n].filter(Boolean).join('\\n');\n\nreturn [{\n  json: {\n    telephone: d.telephone,\n    phone_number_id: d.phone_number_id,\n    lead, type_lead, sheet_name, id_lead,\n    wa_notif: JSON.stringify({\n      messaging_product: 'whatsapp',\n      to: '212774057668',\n      type: 'text',\n      text: { body: lignes }\n    }),\n    sheets_row: {\n      ID: id_lead,\n      Date: new Date().toISOString(),\n      Prenom: lead.prenom || d.nom || 'NC',\n      Telephone: lead.tel || d.telephone,\n      Modele: lead.modele || lead.vehicule || '',\n      Demande: lead.intervention || lead.type_doc || lead.type_financement || '',\n      Chassis: lead.chassis || '',\n      Type: type_lead,\n      Immat: lead.immat || '',\n      Nature: lead.nature || '',\n      Description: lead.description || '',\n      Client_WA: d.telephone,\n      Langue: d.langue || 'FR',\n      Source: 'WhatsApp Bot IA TopAuto',\n      Statut: type_lead === 'reclamation' ? 'Nouveau' : 'A rappeler'\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2848,
+        3392
+      ],
+      "id": "e56df40d-1378-44d8-a5a6-86fbbea29f6d",
+      "name": "18 — Preparer CRM"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1zym75m5DWfKI7-t4tByidTrBXe56jeZqS0eG0_Qp95g",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheet_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3088,
+        3392
+      ],
+      "id": "5cd57a7e-1994-47b6-8e7a-6ca37aee2ee2",
+      "name": "19 — Sauvegarder Google Sheets",
+      "credentials": {
+        "googleApi": {
+          "id": "sSPqVjXMEXyIaN4i",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v20.0/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAASp22f3wJMBReW4uqzfgQxRKkuAWpzkP6aPWWTgOxZBgZAecn92XYhEUlFUz0ZC7Cky2ysUSwFANSe7XvejpZCSdj6hWnKObWZAWY9xmfaupumrgbxjIbGBAkQj4XdUOlyxW2vZAIbZAqzmmCRofchxBkL1WalX171pmLVXh3N2xVpVnWdf7OQg9gY9kpLdkF7tgtc8T6oJr2JpIbYQmZBXlvDjnV3LfviCxQVGY1VJqtE37TPA0jZBqRbqF5uTi289aXSKbVqLZAtnSQ2mJWcPK9"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{$json.wa_notif}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3328,
+        3392
+      ],
+      "id": "027a28fd-ed29-4075-8a27-b9f20927853f",
+      "name": "20 — Notifier Conseiller"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3568,
+        3472
+      ],
+      "id": "b6b13809-10c5-47e7-ade7-12b1181e239e",
+      "name": "21 — Repondre OK Meta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        3152
+      ],
+      "id": "f27febbb-3bec-4988-9b4b-3f702b335e75",
+      "name": "06 — Message Valide ?1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 — Webhook GET": {
+      "main": [
+        [
+          {
+            "node": "02 — Verifier Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 — Verifier Meta": {
+      "main": [
+        [
+          {
+            "node": "03 — Repondre GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 — Webhook POST": {
+      "main": [
+        [
+          {
+            "node": "05 — Extraire Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 — Extraire Message": {
+      "main": [
+        [
+          {
+            "node": "06 — Message Valide ?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 — Gestion Session": {
+      "main": [
+        [
+          {
+            "node": "09 — Anti-Duplicate ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 — Anti-Duplicate ?": {
+      "main": [
+        [
+          {
+            "node": "10 — Ignorer Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11 — Router Etat Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 — Router Etat Session": {
+      "main": [
+        [
+          {
+            "node": "13 — Traiter Choix Langue et Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14 — Agent IA Groq",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12 — Envoyer Bienvenue Langue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14 — Agent IA Groq",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14 — Agent IA Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 — Envoyer Bienvenue Langue": {
+      "main": [
+        [
+          {
+            "node": "21 — Repondre OK Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 — Traiter Choix Langue et Menu": {
+      "main": [
+        [
+          {
+            "node": "21 — Repondre OK Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 — Agent IA Groq": {
+      "main": [
+        [
+          {
+            "node": "15 — Preparer Reponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 — Preparer Reponse": {
+      "main": [
+        [
+          {
+            "node": "16 — Envoyer Reponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 — Envoyer Reponse": {
+      "main": [
+        [
+          {
+            "node": "17 — Lead Detecte ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17 — Lead Detecte ?": {
+      "main": [
+        [
+          {
+            "node": "18 — Preparer CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "21 — Repondre OK Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "18 — Preparer CRM": {
+      "main": [
+        [
+          {
+            "node": "19 — Sauvegarder Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "19 — Sauvegarder Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "20 — Notifier Conseiller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "20 — Notifier Conseiller": {
+      "main": [
+        [
+          {
+            "node": "21 — Repondre OK Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 — Message Valide ?1": {
+      "main": [
+        [
+          {
+            "node": "07 — Ignorer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 — Gestion Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "37e26463-612e-44f6-b999-297b99206026",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f69fbe8ae44ff17f2ae40cd357daea3ce7bc9e17ca2f3aaaed02057e8f868714"
+  },
+  "id": "rqYT8FBwUWK0Ihhe",
+  "tags": []
+}
