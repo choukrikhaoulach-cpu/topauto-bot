@@ -7,7 +7,7 @@ from groq import Groq
 from config import get_api_key
 from leads_csv import append_lead_row
 from parse_tags import extract_lead_nom_tel, split_model_reply
-from prompts import SYSTEM_PROMPT
+from prompts import load_system_prompt
 
 MODEL_NAME = "llama-3.3-70b-versatile"
 MAX_TOKENS = 900
@@ -17,6 +17,7 @@ TEMPERATURE = 0.35
 class ConversationAgent:
     def __init__(self, leads_file: Path) -> None:
         self._client = Groq(api_key=get_api_key())
+        self._system_prompt = load_system_prompt()
         self._history: list[dict[str, str]] = []
         self._leads_path = leads_file
 
@@ -29,7 +30,7 @@ class ConversationAgent:
             return "", "RIEN", False
 
         self._history.append({"role": "user", "content": text})
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self._history]
+        messages = [{"role": "system", "content": self._system_prompt}, *self._history]
 
         completion = self._client.chat.completions.create(
             model=MODEL_NAME,
