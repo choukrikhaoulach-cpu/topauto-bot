@@ -257,16 +257,22 @@ def extraire_lead(tag):
 
 
 def appeler_groq(historique, texte):
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(historique)
-    messages.append({"role": "user", "content": texte})
-    response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages,
-        max_tokens=900,
-        temperature=0.3
-    )
-    return response.choices[0].message.content
+    try:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(historique)
+        messages.append({"role": "user", "content": texte})
+        print(f"[GROQ] Appel avec {len(messages)} messages...")
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            max_tokens=900,
+            temperature=0.3
+        )
+        print(f"[GROQ] Reponse OK")
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"[GROQ ERREUR] {type(e).__name__}: {e}")
+        raise
 
 
 def traiter_reponse_groq(raw):
