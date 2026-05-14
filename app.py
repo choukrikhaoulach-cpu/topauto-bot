@@ -2,34 +2,111 @@
 import os
 import json
 import requests
+from datetime import datetime
 from flask import Flask, request, jsonify
 from groq import Groq
+import google.auth
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 app = Flask(__name__)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = "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"
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "{{WHATSAPP_TOKEN}}")
-PHONE_NUMBER_ID = "1031404513398168"
-VERIFY_TOKEN = "topauto2024secret"
-CONSEILLER_TEL = "212774057668"
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "{{GOOGLE_SHEET_ID}}")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
+PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
+CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ============================================================
-# SESSION MANAGEMENT (memoire par client)
+# GOOGLE SHEETS SETUP
+# ============================================================
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
+
+def get_sheets_service():
+    try:
+        creds_dict = json.loads(GOOGLE_CREDS_JSON)
+        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        service = build("sheets", "v4", credentials=creds)
+        return service
+    except Exception as e:
+        print(f"[SHEETS] Erreur connexion: {e}")
+        return None
+
+# Mapping type lead -> onglet
+SHEET_MAP = {
+    "commercial": "Leads_Commerciaux",
+    "sav_atelier": "SAV_Atelier",
+    "pieces": "Pieces_Rechange",
+    "sav_document": "SAV_Documents",
+    "financement": "Financement_Assurance",
+    "reclamation": "Reclamations"
+}
+
+def enregistrer_lead_sheets(telephone, langue, lead_data):
+    try:
+        service = get_sheets_service()
+        if not service:
+            return False
+
+        type_lead = lead_data.get("type", "commercial")
+        sheet_name = SHEET_MAP.get(type_lead, "Leads_Commerciaux")
+
+        # Generer ID unique
+        now = datetime.now()
+        lead_id = now.strftime("%Y%m%d%H%M%S")
+        date_str = now.strftime("%d/%m/%Y %H:%M")
+
+        row = [
+            lead_id,
+            date_str,
+            lead_data.get("prenom", ""),
+            lead_data.get("tel", ""),
+            lead_data.get("modele", lead_data.get("vehicule", "")),
+            lead_data.get("type_financement", lead_data.get("nature", "")),
+            lead_data.get("chassis", ""),
+            type_lead,
+            lead_data.get("immat", ""),
+            lead_data.get("nature", ""),
+            lead_data.get("description", ""),
+            telephone,
+            langue,
+            "WhatsApp Bot",
+            "NOUVEAU"
+        ]
+
+        body = {"values": [row]}
+        service.spreadsheets().values().append(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range=f"{sheet_name}!A:O",
+            valueInputOption="USER_ENTERED",
+            body=body
+        ).execute()
+
+        print(f"[SHEETS] Lead enregistre dans {sheet_name}")
+        return True
+    except Exception as e:
+        print(f"[SHEETS] Erreur enregistrement: {e}")
+        return False
+
+
+# ============================================================
+# SESSION MANAGEMENT
 # ============================================================
 sessions = {}
 
 SYSTEM_PROMPT = """Tu es l assistant virtuel de Top Auto Mohammedia (Renault et Dacia, Mohammedia Maroc).
 
-REGLE ABSOLUE NUMERO 1 : Ne JAMAIS commencer une reponse par Bienvenue, bonjour bienvenue, nous sommes ravis, nous proposons une gamme, comment pouvons-nous vous aider. Ces phrases sont STRICTEMENT INTERDITES sauf pour le tout premier message de salutation.
+REGLE ABSOLUE NUMERO 1 : Ne JAMAIS commencer une reponse par "Bonjour, comment puis-je vous aider ?" seul. Ce message est trop sec et INTERDIT comme reponse unique a une salutation.
 
 COMPORTEMENT STRICT :
-- Si le client envoie uniquement bonjour ou salam ou hi ou مرحبا -> repondre en UNE seule phrase de bienvenue courte puis demander comment aider
+- Si le client envoie uniquement bonjour ou salam ou hi ou مرحبا -> repondre avec un message de bienvenue chaleureux sur 2-3 lignes qui presente Top Auto Mohammedia et invite le client a exprimer son besoin. Exemple : "Bienvenue chez Top Auto Mohammedia, votre concessionnaire officiel Renault et Dacia ! Nous sommes ravis de vous accueillir. Comment pouvons-nous vous aider aujourd'hui ?"
 - Pour TOUS les autres messages -> repondre IMMEDIATEMENT et DIRECTEMENT a la demande sans aucune introduction ni presentation
 
 ETABLISSEMENT :
@@ -74,6 +151,14 @@ COLLECTE INFOS - UNE SEULE QUESTION A LA FOIS :
 D abord prenom uniquement. Puis telephone. Puis modele si necessaire.
 Ne jamais poser deux questions dans le meme message.
 
+CONFIRMATION LEAD - QUAND TU AS PRENOM ET TELEPHONE :
+Terminer le message par un recapitulatif comme :
+"Recapitulatif de votre demande :
+- Prenom : [prenom]
+- Telephone : [tel]
+- Modele : [modele]
+Notre equipe vous contactera tres prochainement."
+
 LANGUE :
 Caracteres arabes -> reponds UNIQUEMENT en arabe
 Par defaut -> francais
@@ -104,7 +189,6 @@ REGLES FORMAT STRICTES :
 # ============================================================
 
 def get_session(telephone):
-    """Recuperer ou creer une session client"""
     if telephone not in sessions:
         sessions[telephone] = {
             "historique": [],
@@ -115,7 +199,6 @@ def get_session(telephone):
 
 
 def envoyer_whatsapp(telephone, message):
-    """Envoyer un message WhatsApp"""
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -137,29 +220,27 @@ def envoyer_whatsapp(telephone, message):
 
 
 def notifier_conseiller(telephone, nom, lead_data):
-    """Notifier le conseiller WhatsApp"""
     type_lead = lead_data.get("type", "commercial")
     lignes = [
-        f"--- {type_lead.upper()} ---",
+        f"--- NOUVEAU LEAD {type_lead.upper()} ---",
         f"Client WA : {telephone}",
-        f"Nom : {nom}",
+        f"Nom WhatsApp : {nom}",
         f"Prenom : {lead_data.get('prenom', 'NC')}",
         f"Tel : {lead_data.get('tel', 'NC')}",
     ]
-    if lead_data.get("modele"):    lignes.append(f"Modele : {lead_data['modele']}")
-    if lead_data.get("vehicule"):  lignes.append(f"Vehicule : {lead_data['vehicule']}")
-    if lead_data.get("chassis"):   lignes.append(f"Chassis : {lead_data['chassis']}")
-    if lead_data.get("type_doc"):  lignes.append(f"Type doc : {lead_data['type_doc']}")
-    if lead_data.get("immat"):     lignes.append(f"Immat : {lead_data['immat']}")
-    if lead_data.get("nature"):    lignes.append(f"Nature : {lead_data['nature']}")
+    if lead_data.get("modele"):      lignes.append(f"Modele : {lead_data['modele']}")
+    if lead_data.get("vehicule"):    lignes.append(f"Vehicule : {lead_data['vehicule']}")
+    if lead_data.get("chassis"):     lignes.append(f"Chassis : {lead_data['chassis']}")
+    if lead_data.get("type_doc"):    lignes.append(f"Type doc : {lead_data['type_doc']}")
+    if lead_data.get("immat"):       lignes.append(f"Immat : {lead_data['immat']}")
+    if lead_data.get("nature"):      lignes.append(f"Nature : {lead_data['nature']}")
     if lead_data.get("description"): lignes.append(f"Description : {lead_data['description']}")
-    statut = "NOUVEAU - 48h" if type_lead == "reclamation" else "A RAPPELER"
+    statut = "NOUVEAU - reponse 48h" if type_lead == "reclamation" else "A RAPPELER"
     lignes.append(f"Statut : {statut}")
     envoyer_whatsapp(CONSEILLER_TEL, "\n".join(lignes))
 
 
 def extraire_lead(tag):
-    """Extraire les donnees du tag LEAD"""
     if not tag.startswith("LEAD:"):
         return None
     lead = {}
@@ -176,11 +257,9 @@ def extraire_lead(tag):
 
 
 def appeler_groq(historique, texte):
-    """Appeler Groq avec historique complet - comme le test Python"""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(historique)
     messages.append({"role": "user", "content": texte})
-
     response = groq_client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
@@ -191,21 +270,16 @@ def appeler_groq(historique, texte):
 
 
 def traiter_reponse_groq(raw):
-    """Separer texte visible et tag - identique au test Python"""
+    import re
     texte = raw.strip()
     tag = "RIEN"
-
     if "|||" in raw:
         idx = raw.rfind("|||")
         texte = raw[:idx].strip()
         tag = raw[idx+3:].strip()
-
-    # Nettoyage residus
-    import re
     texte = re.sub(r'\|\|\|[\s\S]*', '', texte)
     texte = re.sub(r'LEAD:[\w=|.\s\u0600-\u06FF]*', '', texte)
     texte = texte.replace("|||", "").replace("RIEN", "").replace("FIN", "").strip()
-
     return texte, tag
 
 
@@ -215,7 +289,6 @@ def traiter_reponse_groq(raw):
 
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
-    """Verification Meta"""
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
@@ -227,11 +300,8 @@ def verify_webhook():
 
 @app.route("/webhook", methods=["POST"])
 def receive_message():
-    """Recevoir et traiter les messages WhatsApp"""
     try:
         body = request.get_json()
-
-        # Extraire le message
         entry = body.get("entry", [{}])[0]
         changes = entry.get("changes", [{}])[0]
         value = changes.get("value", {})
@@ -245,7 +315,6 @@ def receive_message():
         nom = value.get("contacts", [{}])[0].get("profile", {}).get("name", "Client")
         msg_type = message.get("type")
 
-        # Extraire texte
         if msg_type == "text":
             texte = message.get("text", {}).get("body", "").strip()
         elif msg_type == "interactive":
@@ -258,44 +327,36 @@ def receive_message():
 
         print(f"\n[MSG] {telephone} ({nom}): {texte}")
 
-        # Recuperer session
         session = get_session(telephone)
 
-        # Detecter langue
         if any('\u0600' <= c <= '\u06FF' for c in texte):
             session["langue"] = "AR"
 
-        # Appeler Groq avec historique
         raw = appeler_groq(session["historique"], texte)
         texte_client, tag = traiter_reponse_groq(raw)
 
-        # Fallback si reponse vide
         if not texte_client or len(texte_client) < 5:
             texte_client = "Desolee, une erreur est survenue. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance."
 
         print(f"[BOT]: {texte_client[:100]}...")
         print(f"[TAG]: {tag}")
 
-        # Mettre a jour historique
         session["historique"].append({"role": "user", "content": texte})
         session["historique"].append({"role": "assistant", "content": texte_client})
 
-        # Limiter historique a 20 messages
         if len(session["historique"]) > 20:
             session["historique"] = session["historique"][-20:]
 
-        # Envoyer reponse WhatsApp
         envoyer_whatsapp(telephone, texte_client)
 
-        # Traiter lead si detecte
         if tag.startswith("LEAD:"):
             lead_data = extraire_lead(tag)
             if lead_data:
                 print(f"[LEAD] {lead_data}")
                 session["infos_collectees"].update(lead_data)
                 notifier_conseiller(telephone, nom, lead_data)
+                enregistrer_lead_sheets(telephone, session["langue"], lead_data)
 
-        # Fin de conversation
         if tag == "FIN":
             del sessions[telephone]
 
