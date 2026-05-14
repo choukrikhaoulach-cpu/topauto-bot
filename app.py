@@ -14,8 +14,7 @@ app = Flask(__name__)
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = "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"
-print(f"[DEBUG] GROQ_API_KEY length: {len(GROQ_API_KEY)} chars, starts with: {GROQ_API_KEY[:8]}")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRXZCwltPEHez3rZAwMiOZAAhiTvEtByPcSMWTv1eWKlisVx8mCUtiUvpOwqXqgxU2z6PzEvg7RCXmZA2kRVvn4OoLphpQhZCXmJWMmPyLP8jNVyZAdcUSAz2H7CZAwZBZBp3nv3JpoAZC6X1S9WKVNqMlExB2ZBbpUF5wqaA1ZC7fNIWzh58CKIxYHPfn6IZAtm7zZBZAMsEDZBnt4Tgh8QfpX0QyGllghJMFQC6IiLQIPF6ELSJ09HZCZCGq2C9vb3ZAlZCQGxLZBODwnXQUR2Wc")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
