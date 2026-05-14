@@ -277,6 +277,7 @@ def appeler_groq(historique, texte):
             timeout=30
         )
         print(f"[GROQ] Status: {resp.status_code}")
+        print(f"[GROQ] Reponse: {resp.text[:200]}")
         data = resp.json()
         return data["choices"][0]["message"]["content"]
     except Exception as e:
