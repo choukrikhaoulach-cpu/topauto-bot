@@ -160,6 +160,7 @@ def envoyer_whatsapp(telephone, message):
     data = {"messaging_product": "whatsapp", "to": telephone, "type": "text", "text": {"body": message}}
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=10)
+        print(f"[WA] Reponse: {resp.text[:200]}")
         print(f"[WA] Envoye a {telephone}: {resp.status_code}")
         return resp.status_code == 200
     except Exception as e:
