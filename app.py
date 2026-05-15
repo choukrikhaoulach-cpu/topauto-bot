@@ -1,45 +1,24 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import json
 import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
-from groq import Groq
-import google.auth
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 
 app = Flask(__name__)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRXZCwltPEHez3rZAwMiOZAAhiTvEtByPcSMWTv1eWKlisVx8mCUtiUvpOwqXqgxU2z6PzEvg7RCXmZA2kRVvn4OoLphpQhZCXmJWMmPyLP8jNVyZAdcUSAz2H7CZAwZBZBp3nv3JpoAZC6X1S9WKVNqMlExB2ZBbpUF5wqaA1ZC7fNIWzh58CKIxYHPfn6IZAtm7zZBZAMsEDZBnt4Tgh8QfpX0QyGllghJMFQC6IiLQIPF6ELSJ09HZCZCGq2C9vb3ZAlZCQGxLZBODwnXQUR2Wc")
+GROQ_API_KEY = "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"
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
-
-groq_client = Groq(api_key=GROQ_API_KEY)
-
-# ============================================================
-# GOOGLE SHEETS SETUP
-# ============================================================
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1zym75m5DWfKI7-t4tByidTrBXe56jeZqS0eG0_Qp95g")
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
 
-def get_sheets_service():
-    try:
-        creds_dict = json.loads(GOOGLE_CREDS_JSON)
-        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        service = build("sheets", "v4", credentials=creds)
-        return service
-    except Exception as e:
-        print(f"[SHEETS] Erreur connexion: {e}")
-        return None
-
-# Mapping type lead -> onglet
 SHEET_MAP = {
     "commercial": "Leads_Commerciaux",
     "sav_atelier": "SAV_Atelier",
@@ -49,52 +28,37 @@ SHEET_MAP = {
     "reclamation": "Reclamations"
 }
 
+# ============================================================
+# GOOGLE SHEETS
+# ============================================================
 def enregistrer_lead_sheets(telephone, langue, lead_data):
     try:
-        service = get_sheets_service()
-        if not service:
-            return False
-
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+        creds_dict = json.loads(GOOGLE_CREDS_JSON)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        service = build("sheets", "v4", credentials=creds)
         type_lead = lead_data.get("type", "commercial")
         sheet_name = SHEET_MAP.get(type_lead, "Leads_Commerciaux")
-
-        # Generer ID unique
         now = datetime.now()
-        lead_id = now.strftime("%Y%m%d%H%M%S")
-        date_str = now.strftime("%d/%m/%Y %H:%M")
-
         row = [
-            lead_id,
-            date_str,
-            lead_data.get("prenom", ""),
-            lead_data.get("tel", ""),
+            now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
+            lead_data.get("prenom", ""), lead_data.get("tel", ""),
             lead_data.get("modele", lead_data.get("vehicule", "")),
             lead_data.get("type_financement", lead_data.get("nature", "")),
-            lead_data.get("chassis", ""),
-            type_lead,
-            lead_data.get("immat", ""),
-            lead_data.get("nature", ""),
-            lead_data.get("description", ""),
-            telephone,
-            langue,
-            "WhatsApp Bot",
-            "NOUVEAU"
+            lead_data.get("chassis", ""), type_lead,
+            lead_data.get("immat", ""), lead_data.get("nature", ""),
+            lead_data.get("description", ""), telephone, langue, "WhatsApp Bot", "NOUVEAU"
         ]
-
-        body = {"values": [row]}
         service.spreadsheets().values().append(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"{sheet_name}!A:O",
-            valueInputOption="USER_ENTERED",
-            body=body
-        ).execute()
-
+            spreadsheetId=GOOGLE_SHEET_ID, range=f"{sheet_name}!A:O",
+            valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
         print(f"[SHEETS] Lead enregistre dans {sheet_name}")
         return True
     except Exception as e:
-        print(f"[SHEETS] Erreur enregistrement: {e}")
+        print(f"[SHEETS] Erreur: {e}")
         return False
-
 
 # ============================================================
 # SESSION MANAGEMENT
@@ -184,32 +148,16 @@ REGLES FORMAT STRICTES :
 - Aucun emoji"""
 
 
-# ============================================================
-# FONCTIONS UTILITAIRES
-# ============================================================
-
 def get_session(telephone):
     if telephone not in sessions:
-        sessions[telephone] = {
-            "historique": [],
-            "langue": "FR",
-            "infos_collectees": {}
-        }
+        sessions[telephone] = {"historique": [], "langue": "FR", "infos_collectees": {}}
     return sessions[telephone]
 
 
 def envoyer_whatsapp(telephone, message):
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "messaging_product": "whatsapp",
-        "to": telephone,
-        "type": "text",
-        "text": {"body": message}
-    }
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+    data = {"messaging_product": "whatsapp", "to": telephone, "type": "text", "text": {"body": message}}
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=10)
         print(f"[WA] Envoye a {telephone}: {resp.status_code}")
@@ -221,22 +169,13 @@ def envoyer_whatsapp(telephone, message):
 
 def notifier_conseiller(telephone, nom, lead_data):
     type_lead = lead_data.get("type", "commercial")
-    lignes = [
-        f"--- NOUVEAU LEAD {type_lead.upper()} ---",
-        f"Client WA : {telephone}",
-        f"Nom WhatsApp : {nom}",
-        f"Prenom : {lead_data.get('prenom', 'NC')}",
-        f"Tel : {lead_data.get('tel', 'NC')}",
-    ]
-    if lead_data.get("modele"):      lignes.append(f"Modele : {lead_data['modele']}")
-    if lead_data.get("vehicule"):    lignes.append(f"Vehicule : {lead_data['vehicule']}")
-    if lead_data.get("chassis"):     lignes.append(f"Chassis : {lead_data['chassis']}")
-    if lead_data.get("type_doc"):    lignes.append(f"Type doc : {lead_data['type_doc']}")
-    if lead_data.get("immat"):       lignes.append(f"Immat : {lead_data['immat']}")
-    if lead_data.get("nature"):      lignes.append(f"Nature : {lead_data['nature']}")
-    if lead_data.get("description"): lignes.append(f"Description : {lead_data['description']}")
-    statut = "NOUVEAU - reponse 48h" if type_lead == "reclamation" else "A RAPPELER"
-    lignes.append(f"Statut : {statut}")
+    lignes = [f"--- NOUVEAU LEAD {type_lead.upper()} ---", f"Client WA : {telephone}",
+              f"Nom WhatsApp : {nom}", f"Prenom : {lead_data.get('prenom', 'NC')}",
+              f"Tel : {lead_data.get('tel', 'NC')}"]
+    for k, label in [("modele","Modele"),("vehicule","Vehicule"),("chassis","Chassis"),
+                     ("type_doc","Type doc"),("immat","Immat"),("nature","Nature"),("description","Description")]:
+        if lead_data.get(k): lignes.append(f"{label} : {lead_data[k]}")
+    lignes.append(f"Statut : {'NOUVEAU - reponse 48h' if type_lead == 'reclamation' else 'A RAPPELER'}")
     envoyer_whatsapp(CONSEILLER_TEL, "\n".join(lignes))
 
 
@@ -247,61 +186,36 @@ def extraire_lead(tag):
     for partie in tag.replace("LEAD:", "").split("|"):
         idx = partie.find("=")
         if idx > 0:
-            k = partie[:idx].strip()
-            v = partie[idx+1:].strip()
+            k, v = partie[:idx].strip(), partie[idx+1:].strip()
             if k and v and v not in ["X", "", "null"]:
                 lead[k] = v
-    if not lead.get("prenom") or not lead.get("tel"):
-        return None
-    return lead
+    return lead if lead.get("prenom") and lead.get("tel") else None
 
 
 def appeler_groq(historique, texte):
-    try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages.extend(historique)
-        messages.append({"role": "user", "content": texte})
-        print(f"[GROQ] Appel HTTP direct...")
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": messages,
-                "max_tokens": 900,
-                "temperature": 0.3
-            },
-            timeout=30
-        )
-        print(f"[GROQ] Status: {resp.status_code}")
-        print(f"[GROQ] Reponse: {resp.text[:200]}")
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        print(f"[GROQ ERREUR] {type(e).__name__}: {e}")
-        raise
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + historique + [{"role": "user", "content": texte}]
+    resp = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json={"model": "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 900, "temperature": 0.3},
+        timeout=30
+    )
+    print(f"[GROQ] Status: {resp.status_code}")
+    if resp.status_code != 200:
+        raise Exception(f"Groq error {resp.status_code}: {resp.text[:200]}")
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 def traiter_reponse_groq(raw):
-    import re
-    texte = raw.strip()
-    tag = "RIEN"
+    texte, tag = raw.strip(), "RIEN"
     if "|||" in raw:
         idx = raw.rfind("|||")
-        texte = raw[:idx].strip()
-        tag = raw[idx+3:].strip()
+        texte, tag = raw[:idx].strip(), raw[idx+3:].strip()
     texte = re.sub(r'\|\|\|[\s\S]*', '', texte)
     texte = re.sub(r'LEAD:[\w=|.\s\u0600-\u06FF]*', '', texte)
     texte = texte.replace("|||", "").replace("RIEN", "").replace("FIN", "").strip()
     return texte, tag
 
-
-# ============================================================
-# ROUTES WEBHOOK
-# ============================================================
 
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
@@ -322,49 +236,35 @@ def receive_message():
         changes = entry.get("changes", [{}])[0]
         value = changes.get("value", {})
         messages = value.get("messages", [])
-
         if not messages:
             return jsonify({"status": "ok"}), 200
-
         message = messages[0]
         telephone = message.get("from")
         nom = value.get("contacts", [{}])[0].get("profile", {}).get("name", "Client")
         msg_type = message.get("type")
-
         if msg_type == "text":
             texte = message.get("text", {}).get("body", "").strip()
         elif msg_type == "interactive":
             texte = message.get("interactive", {}).get("button_reply", {}).get("title", "")
         else:
             return jsonify({"status": "ok"}), 200
-
         if not texte:
             return jsonify({"status": "ok"}), 200
-
         print(f"\n[MSG] {telephone} ({nom}): {texte}")
-
         session = get_session(telephone)
-
         if any('\u0600' <= c <= '\u06FF' for c in texte):
             session["langue"] = "AR"
-
         raw = appeler_groq(session["historique"], texte)
         texte_client, tag = traiter_reponse_groq(raw)
-
         if not texte_client or len(texte_client) < 5:
             texte_client = "Desolee, une erreur est survenue. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance."
-
         print(f"[BOT]: {texte_client[:100]}...")
         print(f"[TAG]: {tag}")
-
         session["historique"].append({"role": "user", "content": texte})
         session["historique"].append({"role": "assistant", "content": texte_client})
-
         if len(session["historique"]) > 20:
             session["historique"] = session["historique"][-20:]
-
         envoyer_whatsapp(telephone, texte_client)
-
         if tag.startswith("LEAD:"):
             lead_data = extraire_lead(tag)
             if lead_data:
@@ -372,12 +272,9 @@ def receive_message():
                 session["infos_collectees"].update(lead_data)
                 notifier_conseiller(telephone, nom, lead_data)
                 enregistrer_lead_sheets(telephone, session["langue"], lead_data)
-
         if tag == "FIN":
             del sessions[telephone]
-
         return jsonify({"status": "ok"}), 200
-
     except Exception as e:
         print(f"[ERREUR] {e}")
         return jsonify({"status": "error", "message": str(e)}), 200
@@ -388,11 +285,7 @@ def home():
     return "TopAuto WhatsApp Bot - Online", 200
 
 
-# ============================================================
-# LANCEMENT
-# ============================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"[START] TopAuto Bot sur port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
-# redeploy
