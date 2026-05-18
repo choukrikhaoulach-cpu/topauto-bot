@@ -42,6 +42,20 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         type_lead = lead_data.get("type", "commercial")
         sheet_name = SHEET_MAP.get(type_lead, "Leads_Commerciaux")
         now = datetime.now()
+
+        # Chercher si le client existe deja (par numero WhatsApp en colonne L = index 11)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range=f"{sheet_name}!A:O"
+        ).execute()
+        rows = result.get("values", [])
+
+        existing_row_index = None
+        for i, r in enumerate(rows):
+            if len(r) > 11 and r[11] == telephone:
+                existing_row_index = i + 1  # 1-indexed
+                break
+
         row = [
             now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
             lead_data.get("prenom", ""), lead_data.get("tel", ""),
@@ -51,10 +65,23 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
             lead_data.get("immat", ""), lead_data.get("nature", ""),
             lead_data.get("description", ""), telephone, langue, "WhatsApp Bot", "NOUVEAU"
         ]
-        service.spreadsheets().values().append(
-            spreadsheetId=GOOGLE_SHEET_ID, range=f"{sheet_name}!A:O",
-            valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
-        print(f"[SHEETS] Lead enregistre dans {sheet_name}")
+
+        if existing_row_index:
+            # Mettre a jour la ligne existante
+            service.spreadsheets().values().update(
+                spreadsheetId=GOOGLE_SHEET_ID,
+                range=f"{sheet_name}!A{existing_row_index}:O{existing_row_index}",
+                valueInputOption="USER_ENTERED",
+                body={"values": [row]}
+            ).execute()
+            print(f"[SHEETS] Lead mis a jour dans {sheet_name} ligne {existing_row_index}")
+        else:
+            # Creer une nouvelle ligne
+            service.spreadsheets().values().append(
+                spreadsheetId=GOOGLE_SHEET_ID, range=f"{sheet_name}!A:O",
+                valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
+            print(f"[SHEETS] Nouveau lead enregistre dans {sheet_name}")
+
         return True
     except Exception as e:
         print(f"[SHEETS] Erreur: {e}")
