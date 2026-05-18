@@ -415,6 +415,95 @@ def receive_message():
         session = get_session(telephone)
 
         # ============================================================
+        # TRAITEMENT AUDIO - Assistant vocal
+        # ============================================================
+        if msg_type == "audio":
+            print(f"[AUDIO] Message vocal recu de {telephone}")
+            envoyer_whatsapp(telephone, "Message vocal recu, transcription en cours...")
+
+            media_id = message.get("audio", {}).get("id")
+            if not media_id:
+                envoyer_whatsapp(telephone, "Impossible de traiter ce message vocal. Merci pour votre confiance.")
+                return jsonify({"status": "ok"}), 200
+
+            # Telecharger l'audio
+            url_media = f"https://graph.facebook.com/v20.0/{media_id}"
+            headers_wa = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+            resp_url = requests.get(url_media, headers=headers_wa, timeout=10)
+            if resp_url.status_code != 200:
+                envoyer_whatsapp(telephone, "Impossible de traiter ce message vocal. Appelez-nous au 05 23 30 31 94.")
+                return jsonify({"status": "ok"}), 200
+
+            audio_url = resp_url.json().get("url")
+            resp_audio = requests.get(audio_url, headers=headers_wa, timeout=20)
+            if resp_audio.status_code != 200:
+                envoyer_whatsapp(telephone, "Erreur telechargement audio. Appelez-nous au 05 23 30 31 94.")
+                return jsonify({"status": "ok"}), 200
+
+            # Transcrire avec Groq Whisper
+            try:
+                files = {"file": ("audio.ogg", resp_audio.content, "audio/ogg")}
+                data_whisper = {"model": "whisper-large-v3", "language": "fr", "response_format": "text"}
+                resp_whisper = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                    files=files,
+                    data=data_whisper,
+                    timeout=30
+                )
+                if resp_whisper.status_code != 200:
+                    envoyer_whatsapp(telephone, "Transcription impossible. Ecrivez votre message svp. Merci pour votre confiance.")
+                    return jsonify({"status": "ok"}), 200
+
+                texte_transcrit = resp_whisper.text.strip()
+                print(f"[AUDIO] Transcription: {texte_transcrit}")
+
+                if not texte_transcrit:
+                    envoyer_whatsapp(telephone, "Je n ai pas pu comprendre votre message vocal. Ecrivez votre demande svp.")
+                    return jsonify({"status": "ok"}), 200
+
+                # Informer le client de la transcription
+                envoyer_whatsapp(telephone, f"J ai bien entendu : \"{texte_transcrit}\"")
+
+                # Traiter le texte transcrit comme un message normal
+                session = get_session(telephone)
+                if any('\u0600' <= c <= '\u06FF' for c in texte_transcrit):
+                    session["langue"] = "AR"
+
+                raw = appeler_groq(session["historique"], texte_transcrit)
+                texte_client, tag = traiter_reponse_groq(raw)
+
+                if "BOUTONS_BIENVENUE" in texte_client or "BOUTONS_BIENVENUE" in tag:
+                    envoyer_bienvenue(telephone)
+                    return jsonify({"status": "ok"}), 200
+
+                if not texte_client or len(texte_client) < 5:
+                    texte_client = "Desolee, une erreur est survenue. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance."
+
+                session["historique"].append({"role": "user", "content": texte_transcrit})
+                session["historique"].append({"role": "assistant", "content": texte_client})
+                if len(session["historique"]) > 20:
+                    session["historique"] = session["historique"][-20:]
+
+                envoyer_whatsapp(telephone, texte_client)
+
+                if tag.startswith("LEAD:"):
+                    lead_data = extraire_lead(tag)
+                    if lead_data:
+                        session["infos_collectees"].update(lead_data)
+                        notifier_conseiller(telephone, nom, lead_data)
+                        enregistrer_lead_sheets(telephone, session["langue"], lead_data)
+
+                if tag == "FIN":
+                    del sessions[telephone]
+
+            except Exception as e:
+                print(f"[AUDIO] Erreur: {e}")
+                envoyer_whatsapp(telephone, "Transcription impossible. Ecrivez votre message svp. Merci pour votre confiance.")
+
+            return jsonify({"status": "ok"}), 200
+
+        # ============================================================
         # TRAITEMENT IMAGE - Analyse photo vehicule
         # ============================================================
         if msg_type == "image":
