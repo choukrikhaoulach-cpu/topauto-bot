@@ -11,8 +11,8 @@ app = Flask(__name__)
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = "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"
-WHATSAPP_TOKEN = "EAASp22f3wJMBRTvyXKjBDEt9WhZATd1a2ncDk73ZCZAWZAEZCblkSJGPsfME3e6ih0qLy9JuFvTdRXNDLi6IK3HymdMgFK4NqPZCWwyWCgPmPPxuA8mUVWmGmFLLXKP8alvTcNfnZCa1FHEEDrGDGKoFzHjcTh6yMVvIhrwpe59jlbFYo0sDS1ALf8LeZCkmDODADtPB7Adcw7LGo1KOkT0Cqs2xOaqhxOulEQUjUBisKjIaQOWpNWmEyF0naod06cFxPBWgEcpo7D6QcTzTCVp2"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRTvyXKjBDEt9WhZATd1a2ncDk73ZCZAWZAEZCblkSJGPsfME3e6ih0qLy9JuFvTdRXNDLi6IK3HymdMgFK4NqPZCWwyWCgPmPPxuA8mUVWmGmFLLXKP8alvTcNfnZCa1FHEEDrGDGKoFzHjcTh6yMVvIhrwpe59jlbFYo0sDS1ALf8LeZCkmDODADtPB7Adcw7LGo1KOkT0Cqs2xOaqhxOulEQUjUBisKjIaQOWpNWmEyF0naod06cFxPBWgEcpo7D6QcTzTCVp2")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
@@ -43,7 +43,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         sheet_name = SHEET_MAP.get(type_lead, "Leads_Commerciaux")
         now = datetime.now()
 
-        # Chercher si le client existe deja (par numero WhatsApp en colonne L = index 11)
+        # Chercher si le client existe deja par numero WhatsApp (colonne L = index 11)
         result = service.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_ID,
             range=f"{sheet_name}!A:O"
@@ -67,16 +67,14 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         ]
 
         if existing_row_index:
-            # Mettre a jour la ligne existante
             service.spreadsheets().values().update(
                 spreadsheetId=GOOGLE_SHEET_ID,
                 range=f"{sheet_name}!A{existing_row_index}:O{existing_row_index}",
                 valueInputOption="USER_ENTERED",
                 body={"values": [row]}
             ).execute()
-            print(f"[SHEETS] Lead mis a jour dans {sheet_name} ligne {existing_row_index}")
+            print(f"[SHEETS] Lead mis a jour ligne {existing_row_index}")
         else:
-            # Creer une nouvelle ligne
             service.spreadsheets().values().append(
                 spreadsheetId=GOOGLE_SHEET_ID, range=f"{sheet_name}!A:O",
                 valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
@@ -87,6 +85,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         print(f"[SHEETS] Erreur: {e}")
         return False
 
+
 # ============================================================
 # SESSION MANAGEMENT
 # ============================================================
@@ -94,18 +93,15 @@ sessions = {}
 
 SYSTEM_PROMPT = """Tu es l assistant virtuel de Top Auto Mohammedia (Renault et Dacia, Mohammedia Maroc).
 
-REGLE ABSOLUE NUMERO 1 : Ne JAMAIS commencer une reponse par "Bonjour, comment puis-je vous aider ?" seul. Ce message est trop sec et INTERDIT comme reponse unique a une salutation.
-
 COMPORTEMENT STRICT :
-- Si le client envoie uniquement bonjour ou salam ou hi ou مرحبا -> repondre avec un message de bienvenue chaleureux sur 2-3 lignes qui presente Top Auto Mohammedia et invite le client a exprimer son besoin. Exemple : "Bienvenue chez Top Auto Mohammedia, votre concessionnaire officiel Renault et Dacia ! Nous sommes ravis de vous accueillir. Comment pouvons-nous vous aider aujourd'hui ?"
-- Pour TOUS les autres messages -> repondre IMMEDIATEMENT et DIRECTEMENT a la demande sans aucune introduction ni presentation
+- Si le client envoie uniquement bonjour ou salam ou hi ou مرحبا -> NE PAS repondre par du texte. Retourner exactement : BOUTONS_BIENVENUE|||RIEN
+- Pour TOUS les autres messages -> repondre IMMEDIATEMENT et DIRECTEMENT a la demande
 
 ETABLISSEMENT :
 Adresse : Q.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia
 Tel Renault : 05 23 30 31 94 | Dacia : 05 23 30 31 95
 Horaires : Lun-Ven 8h00-18h30 | Sam Renault 8h30-13h00 | Sam Dacia 8h30-15h00 | Dim ferme
 GPS : 33.683384 N, 7.409769 W
-Facebook : @topauto | Instagram : @top_auto_mohammedia
 
 GAMME DACIA :
 Spring electrique (24.3kWh 70/100ch Essential/Extreme) | Sandero Streetway (2026 ecran10p 1.0SCe65ch/1.0TCe100ch/1.5dCi102ch Essential-Journey) | Sandero Stepway (17cm 1.0TCe100ch/1.5dCi102ch CVT) | Logan (coffre528L 1.0SCe65ch/1.0TCe100ch/1.5dCi102ch) | Jogger (5ou7pl coffre1807L HEV140ch) | Duster 2025 (1.5dCi115ch/1.3TCe130ch Essential-Extreme) | Bigster 2025 (HEV155ch toitPano Essential-Journey)
@@ -131,23 +127,22 @@ Facture : CIN/passeport + chassis + motif (perte/administration/assurance)
 Carte grise : prenom+nom + CIN + chassis
 
 REGLES :
-1. PRIX : Jamais de prix. Dire : Pour le meilleur tarif personnalise, je transmets a notre equipe. Puis-je noter votre prenom ?
+1. PRIX : Jamais de prix. Dire : Pour le meilleur tarif personnalise, contactez notre equipe.
 2. RDV ET TEST DRIVE : Essai gratuit sans engagement. Donner les deux liens + collecter prenom et telephone
 3. DOCUMENTS SAV : Lister justificatifs selon type + collecter prenom/telephone/chassis un par un
 4. RECLAMATIONS : Empathie totale + collecter prenom/telephone/immat/description un par un + confirmer reponse 48h
 5. FINANCEMENT : Presenter options sans taux ni mensualite + orienter conseiller
-6. CATALOGUE : Afficher toute la gamme avec details techniques. Ne pas demander prenom/tel.
+6. CATALOGUE : Afficher toute la gamme avec details techniques.
 
 COLLECTE INFOS - UNE SEULE QUESTION A LA FOIS :
 D abord prenom uniquement. Puis telephone. Puis modele si necessaire.
 Ne jamais poser deux questions dans le meme message.
 
 CONFIRMATION LEAD - QUAND TU AS PRENOM ET TELEPHONE :
-Terminer le message par un recapitulatif comme :
-"Recapitulatif de votre demande :
+Terminer le message par un recapitulatif :
+"Recapitulatif :
 - Prenom : [prenom]
 - Telephone : [tel]
-- Modele : [modele]
 Notre equipe vous contactera tres prochainement."
 
 LANGUE :
@@ -167,7 +162,7 @@ TAG possible :
 |||LEAD:prenom=X|tel=X|immat=X|nature=X|description=X|type=reclamation
 |||FIN
 
-REGLES FORMAT STRICTES :
+REGLES FORMAT :
 - JAMAIS ecrire ||| ou LEAD ou TAG dans le texte visible
 - Si prenom ou tel manquants -> |||RIEN
 - Sauvegarder LEAD seulement si prenom ET tel sont reels
@@ -175,6 +170,9 @@ REGLES FORMAT STRICTES :
 - Aucun emoji"""
 
 
+# ============================================================
+# WHATSAPP HELPERS
+# ============================================================
 def get_session(telephone):
     if telephone not in sessions:
         sessions[telephone] = {"historique": [], "langue": "FR", "infos_collectees": {}}
@@ -187,23 +185,72 @@ def envoyer_whatsapp(telephone, message):
     data = {"messaging_product": "whatsapp", "to": telephone, "type": "text", "text": {"body": message}}
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=10)
-        print(f"[WA] Reponse: {resp.text[:200]}")
-        print(f"[WA] Envoye a {telephone}: {resp.status_code}")
+        print(f"[WA] Text {resp.status_code}")
         return resp.status_code == 200
     except Exception as e:
         print(f"[WA] Erreur: {e}")
         return False
 
 
+def envoyer_boutons(telephone, body_text, buttons):
+    """Envoyer un message avec boutons interactifs (max 3)"""
+    url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+
+    btn_list = [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in buttons[:3]]
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": telephone,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {"buttons": btn_list}
+        }
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=data, timeout=10)
+        print(f"[WA] Boutons {resp.status_code}: {resp.text[:100]}")
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"[WA] Erreur boutons: {e}")
+        return False
+
+
+def envoyer_bienvenue(telephone):
+    envoyer_boutons(
+        telephone,
+        "Bienvenue chez Top Auto Mohammedia, votre concessionnaire officiel Renault et Dacia !\nComment puis-je vous aider aujourd'hui ?",
+        [
+            {"id": "btn_catalogue", "title": "Catalogue"},
+            {"id": "btn_sav", "title": "SAV & Atelier"},
+            {"id": "btn_autre", "title": "Autre"}
+        ]
+    )
+
+
+def envoyer_catalogue(telephone):
+    envoyer_boutons(
+        telephone,
+        "Quelle gamme vous interesse ?",
+        [
+            {"id": "btn_renault", "title": "Renault"},
+            {"id": "btn_dacia", "title": "Dacia"},
+            {"id": "btn_les_deux", "title": "Les deux"}
+        ]
+    )
+
+
 def notifier_conseiller(telephone, nom, lead_data):
     type_lead = lead_data.get("type", "commercial")
     lignes = [f"--- NOUVEAU LEAD {type_lead.upper()} ---", f"Client WA : {telephone}",
-              f"Nom WhatsApp : {nom}", f"Prenom : {lead_data.get('prenom', 'NC')}",
+              f"Nom : {nom}", f"Prenom : {lead_data.get('prenom', 'NC')}",
               f"Tel : {lead_data.get('tel', 'NC')}"]
     for k, label in [("modele","Modele"),("vehicule","Vehicule"),("chassis","Chassis"),
                      ("type_doc","Type doc"),("immat","Immat"),("nature","Nature"),("description","Description")]:
         if lead_data.get(k): lignes.append(f"{label} : {lead_data[k]}")
-    lignes.append(f"Statut : {'NOUVEAU - reponse 48h' if type_lead == 'reclamation' else 'A RAPPELER'}")
+    lignes.append(f"Statut : {'NOUVEAU - 48h' if type_lead == 'reclamation' else 'A RAPPELER'}")
     envoyer_whatsapp(CONSEILLER_TEL, "\n".join(lignes))
 
 
@@ -245,6 +292,9 @@ def traiter_reponse_groq(raw):
     return texte, tag
 
 
+# ============================================================
+# ROUTES WEBHOOK
+# ============================================================
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
     mode = request.args.get("hub.mode")
@@ -264,35 +314,87 @@ def receive_message():
         changes = entry.get("changes", [{}])[0]
         value = changes.get("value", {})
         messages = value.get("messages", [])
+
         if not messages:
             return jsonify({"status": "ok"}), 200
+
         message = messages[0]
         telephone = message.get("from")
         nom = value.get("contacts", [{}])[0].get("profile", {}).get("name", "Client")
         msg_type = message.get("type")
+
+        # Extraire texte selon type
         if msg_type == "text":
             texte = message.get("text", {}).get("body", "").strip()
+            button_id = None
         elif msg_type == "interactive":
-            texte = message.get("interactive", {}).get("button_reply", {}).get("title", "")
+            interactive = message.get("interactive", {})
+            if interactive.get("type") == "button_reply":
+                button_id = interactive["button_reply"]["id"]
+                texte = interactive["button_reply"]["title"]
+            else:
+                return jsonify({"status": "ok"}), 200
         else:
             return jsonify({"status": "ok"}), 200
+
         if not texte:
             return jsonify({"status": "ok"}), 200
+
         print(f"\n[MSG] {telephone} ({nom}): {texte}")
+
         session = get_session(telephone)
+
         if any('\u0600' <= c <= '\u06FF' for c in texte):
             session["langue"] = "AR"
+
+        # ---- Gestion des boutons ----
+        texte_lower = texte.lower().strip()
+        salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir", "مرحبا", "السلام"]
+
+        if texte_lower in salutations or (msg_type == "text" and not session["historique"] and texte_lower in salutations):
+            envoyer_bienvenue(telephone)
+            return jsonify({"status": "ok"}), 200
+
+        if msg_type == "interactive":
+            if button_id == "btn_catalogue":
+                envoyer_catalogue(telephone)
+                return jsonify({"status": "ok"}), 200
+
+            elif button_id == "btn_renault":
+                texte = "Montre moi la gamme Renault complete"
+            elif button_id == "btn_dacia":
+                texte = "Montre moi la gamme Dacia complete"
+            elif button_id == "btn_les_deux":
+                texte = "Montre moi toute la gamme Renault et Dacia"
+            elif button_id == "btn_sav":
+                texte = "Je veux prendre un rendez-vous SAV atelier"
+            elif button_id == "btn_autre":
+                envoyer_whatsapp(telephone, "Je suis a votre disposition. Dites-moi comment je peux vous aider : financement, documents, reclamation, localisation ou autre question.")
+                return jsonify({"status": "ok"}), 200
+
+        # ---- Appel Groq ----
         raw = appeler_groq(session["historique"], texte)
         texte_client, tag = traiter_reponse_groq(raw)
+
+        # Si Groq retourne BOUTONS_BIENVENUE
+        if "BOUTONS_BIENVENUE" in texte_client or "BOUTONS_BIENVENUE" in tag:
+            envoyer_bienvenue(telephone)
+            return jsonify({"status": "ok"}), 200
+
         if not texte_client or len(texte_client) < 5:
             texte_client = "Desolee, une erreur est survenue. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance."
+
         print(f"[BOT]: {texte_client[:100]}...")
         print(f"[TAG]: {tag}")
+
         session["historique"].append({"role": "user", "content": texte})
         session["historique"].append({"role": "assistant", "content": texte_client})
+
         if len(session["historique"]) > 20:
             session["historique"] = session["historique"][-20:]
+
         envoyer_whatsapp(telephone, texte_client)
+
         if tag.startswith("LEAD:"):
             lead_data = extraire_lead(tag)
             if lead_data:
@@ -300,9 +402,12 @@ def receive_message():
                 session["infos_collectees"].update(lead_data)
                 notifier_conseiller(telephone, nom, lead_data)
                 enregistrer_lead_sheets(telephone, session["langue"], lead_data)
+
         if tag == "FIN":
             del sessions[telephone]
+
         return jsonify({"status": "ok"}), 200
+
     except Exception as e:
         print(f"[ERREUR] {e}")
         return jsonify({"status": "error", "message": str(e)}), 200
