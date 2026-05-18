@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import base64
 import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -43,7 +44,6 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         sheet_name = SHEET_MAP.get(type_lead, "Leads_Commerciaux")
         now = datetime.now()
 
-        # Chercher si le client existe deja par numero WhatsApp (colonne L = index 11)
         result = service.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_ID,
             range=f"{sheet_name}!A:O"
@@ -53,7 +53,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
         existing_row_index = None
         for i, r in enumerate(rows):
             if len(r) > 11 and r[11] == telephone:
-                existing_row_index = i + 1  # 1-indexed
+                existing_row_index = i + 1
                 break
 
         row = [
@@ -84,6 +84,98 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
     except Exception as e:
         print(f"[SHEETS] Erreur: {e}")
         return False
+
+
+# ============================================================
+# ANALYSE PHOTO VEHICULE PAR IA
+# ============================================================
+def telecharger_image_whatsapp(media_id):
+    """Telecharger une image depuis WhatsApp et la convertir en base64"""
+    try:
+        # Etape 1 : recuperer l'URL de l'image
+        url_media = f"https://graph.facebook.com/v20.0/{media_id}"
+        headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+        resp = requests.get(url_media, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            print(f"[PHOTO] Erreur recuperation URL: {resp.status_code}")
+            return None
+        media_url = resp.json().get("url")
+        if not media_url:
+            return None
+
+        # Etape 2 : telecharger l'image
+        resp_img = requests.get(media_url, headers=headers, timeout=15)
+        if resp_img.status_code != 200:
+            print(f"[PHOTO] Erreur telechargement image: {resp_img.status_code}")
+            return None
+
+        # Convertir en base64
+        img_b64 = base64.b64encode(resp_img.content).decode("utf-8")
+        content_type = resp_img.headers.get("Content-Type", "image/jpeg")
+        print(f"[PHOTO] Image telechargee ({len(resp_img.content)} bytes)")
+        return img_b64, content_type
+
+    except Exception as e:
+        print(f"[PHOTO] Erreur: {e}")
+        return None
+
+
+def analyser_photo_vehicule(img_b64, content_type, langue="FR"):
+    """Analyser une photo de vehicule avec Groq Vision"""
+    try:
+        if langue == "AR":
+            prompt = """أنت مساعد ذكاء اصطناعي متخصص في تشخيص مشاكل السيارات لوكالة Top Auto Mohammedia.
+حلل هذه الصورة بدقة وأجب بالعربية:
+1. ما الذي تراه في الصورة؟
+2. ما هي المشكلة أو الحالة المحتملة؟
+3. ما هي توصيتك؟ (صيانة عادية / إصلاح عاجل / تدخل الورشة)
+كن دقيقاً ومهنياً. أنهِ بـ: شكرا على ثقتك."""
+        else:
+            prompt = """Tu es un expert en diagnostic automobile pour Top Auto Mohammedia (concessionnaire Renault et Dacia).
+Analyse cette image avec precision et reponds en francais :
+1. Que vois-tu sur cette image ?
+2. Quel est le probleme ou l etat detecte ?
+3. Quelle est ta recommandation ? (entretien normal / reparation urgente / intervention atelier necessaire)
+Sois precis et professionnel. Termine par : Merci pour votre confiance."""
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{content_type};base64,{img_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ]
+
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": messages,
+                "max_tokens": 600,
+                "temperature": 0.3
+            },
+            timeout=30
+        )
+        print(f"[VISION] Status: {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"[VISION] Erreur: {resp.text[:200]}")
+            return None
+        return resp.json()["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        print(f"[VISION] Erreur analyse: {e}")
+        return None
 
 
 # ============================================================
@@ -193,12 +285,9 @@ def envoyer_whatsapp(telephone, message):
 
 
 def envoyer_boutons(telephone, body_text, buttons):
-    """Envoyer un message avec boutons interactifs (max 3)"""
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-
     btn_list = [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in buttons[:3]]
-
     data = {
         "messaging_product": "whatsapp",
         "to": telephone,
@@ -211,7 +300,7 @@ def envoyer_boutons(telephone, body_text, buttons):
     }
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=10)
-        print(f"[WA] Boutons {resp.status_code}: {resp.text[:100]}")
+        print(f"[WA] Boutons {resp.status_code}")
         return resp.status_code == 200
     except Exception as e:
         print(f"[WA] Erreur boutons: {e}")
@@ -323,7 +412,48 @@ def receive_message():
         nom = value.get("contacts", [{}])[0].get("profile", {}).get("name", "Client")
         msg_type = message.get("type")
 
-        # Extraire texte selon type
+        session = get_session(telephone)
+
+        # ============================================================
+        # TRAITEMENT IMAGE - Analyse photo vehicule
+        # ============================================================
+        if msg_type == "image":
+            print(f"[PHOTO] Image recue de {telephone}")
+            envoyer_whatsapp(telephone, "Analyse de votre image en cours, veuillez patienter...")
+
+            media_id = message.get("image", {}).get("id")
+            if not media_id:
+                envoyer_whatsapp(telephone, "Impossible de traiter cette image. Merci pour votre confiance.")
+                return jsonify({"status": "ok"}), 200
+
+            result = telecharger_image_whatsapp(media_id)
+            if not result:
+                envoyer_whatsapp(telephone, "Impossible de telecharger l image. Appelez-nous au 05 23 30 31 94. Merci pour votre confiance.")
+                return jsonify({"status": "ok"}), 200
+
+            img_b64, content_type = result
+            diagnostic = analyser_photo_vehicule(img_b64, content_type, session.get("langue", "FR"))
+
+            if diagnostic:
+                envoyer_whatsapp(telephone, diagnostic)
+                # Proposer un RDV apres le diagnostic
+                envoyer_boutons(
+                    telephone,
+                    "Souhaitez-vous prendre un rendez-vous atelier ?",
+                    [
+                        {"id": "btn_sav", "title": "Prendre RDV"},
+                        {"id": "btn_autre", "title": "Autre question"},
+                        {"id": "btn_catalogue", "title": "Voir catalogue"}
+                    ]
+                )
+            else:
+                envoyer_whatsapp(telephone, "Analyse non disponible. Contactez-nous au 05 23 30 31 94 pour un diagnostic. Merci pour votre confiance.")
+
+            return jsonify({"status": "ok"}), 200
+
+        # ============================================================
+        # TRAITEMENT TEXTE ET BOUTONS
+        # ============================================================
         if msg_type == "text":
             texte = message.get("text", {}).get("body", "").strip()
             button_id = None
@@ -342,16 +472,13 @@ def receive_message():
 
         print(f"\n[MSG] {telephone} ({nom}): {texte}")
 
-        session = get_session(telephone)
-
         if any('\u0600' <= c <= '\u06FF' for c in texte):
             session["langue"] = "AR"
 
-        # ---- Gestion des boutons ----
         texte_lower = texte.lower().strip()
         salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir", "مرحبا", "السلام"]
 
-        if texte_lower in salutations or (msg_type == "text" and not session["historique"] and texte_lower in salutations):
+        if texte_lower in salutations:
             envoyer_bienvenue(telephone)
             return jsonify({"status": "ok"}), 200
 
@@ -359,7 +486,6 @@ def receive_message():
             if button_id == "btn_catalogue":
                 envoyer_catalogue(telephone)
                 return jsonify({"status": "ok"}), 200
-
             elif button_id == "btn_renault":
                 texte = "Montre moi la gamme Renault complete"
             elif button_id == "btn_dacia":
@@ -372,11 +498,9 @@ def receive_message():
                 envoyer_whatsapp(telephone, "Je suis a votre disposition. Dites-moi comment je peux vous aider : financement, documents, reclamation, localisation ou autre question.")
                 return jsonify({"status": "ok"}), 200
 
-        # ---- Appel Groq ----
         raw = appeler_groq(session["historique"], texte)
         texte_client, tag = traiter_reponse_groq(raw)
 
-        # Si Groq retourne BOUTONS_BIENVENUE
         if "BOUTONS_BIENVENUE" in texte_client or "BOUTONS_BIENVENUE" in tag:
             envoyer_bienvenue(telephone)
             return jsonify({"status": "ok"}), 200
