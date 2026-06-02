@@ -12,12 +12,12 @@ app = Flask(__name__)
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRkuukEXx29cOyzdu2xth56J6ob4TtGZCE2TX93N6y30PpgCATWxwha8HE6bCBbwC83ofY0qqqPczb5vDJiAmhQNd55778CdJy8jw9uq3X0ibkvJD4lzaeyef82Ds3WZAOMyiSWVaX8kooGeoeYxlqxlozpEayaUKpL9kJOskV0pxzL5bJ5z4pZBNrH9N3vNLT718zbbJXhwYMO5XNoqhVL68wqgZAC09tQn1VhU3njF0sYTbVRCsqEfdGk8y2ldratJRjjPz")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1zym75m5DWfKI7-t4tByidTrBXe56jeZqS0eG0_Qp95g")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "11dWGrEvstbiELpli7jVz4_rDu9vIUETg8_m_fHb2WAA")
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
 
 # ============================================================
