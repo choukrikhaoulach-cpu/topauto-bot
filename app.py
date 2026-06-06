@@ -606,7 +606,22 @@ def receive_message():
             return jsonify({"status": "ok"}), 200
 
         if not texte_client or len(texte_client) < 3:
-            texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
+            if tag.startswith("LEAD:"):
+                lead_tmp = extraire_lead(tag)
+                if lead_tmp:
+                    texte_client = (
+                        f"Récapitulatif de votre demande :\n"
+                        f"- Prénom : {lead_tmp.get('prenom', '')}\n"
+                        f"- Téléphone : {lead_tmp.get('tel', '')}\n"
+                    )
+                    if lead_tmp.get('modele'): texte_client += f"- Modèle : {lead_tmp['modele']}\n"
+                    if lead_tmp.get('ville'):  texte_client += f"- Ville : {lead_tmp['ville']}\n"
+                    if lead_tmp.get('chassis'): texte_client += f"- Châssis : {lead_tmp['chassis']}\n"
+                    texte_client += "Notre équipe vous contactera très prochainement. Merci pour votre confiance."
+                else:
+                    texte_client = "Votre demande a bien été enregistrée. Notre équipe vous contactera. Merci pour votre confiance."
+            else:
+                texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
         # ---- VERIFICATION RDI EN TEMPS REEL ----
         # BUG FIX : utiliser chassis_rdi directement au lieu de lead_data_rdi["chassis"]
