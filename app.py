@@ -250,7 +250,7 @@ CONFIRMATION LEAD :
 Notre équipe vous contactera très prochainement. Merci pour votre confiance."
 
 FORMAT OBLIGATOIRE :
-TEXTE_VISIBLE|||TAG
+[Texte de ta réponse au client]|||TAG
 
 TAGS :
 |||RIEN
