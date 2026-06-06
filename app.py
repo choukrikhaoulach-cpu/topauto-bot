@@ -13,28 +13,30 @@ app = Flask(__name__)
 # CONFIGURATION
 # ============================================================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRpA669qgulmfKLlq2lrrjVmMdHyeM4whaBCFV7qNP0J9z5Bc8GVzXpjFXfPVlrmcJrAIeADN81Nj9XWoQLJVhKSABOba5nDEnoJhL9JpvSMT4mgZBx83z5vmTjAQdwufbSes24DJVcbtCnjuW1hLTVLKTsopqg8mOYS7XirLnF7Gt2F8j7hdD99YR8Qvh96bk46JTnxT8XVzZBPNBBG8ayi7GIwdaZAWQGVkmC96Beyxhht2AfoblbmwxhkNyNPf3gINbmE")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRsiX2xJCM2rrKl1jTf1sZCxzqCReDUQGgeZC20IW92mlY0rwvwi3FeiY63ZCxvVMkJoBEZC8VeCEi9AjpgrSmhC2zdt2XGoxVc8fqQR287x2LEyfxluplZC3sulhLj2vFRAILowpbu9SmkSjfftzrOjZCRcfNZB4R7TklXZCqimK9s4XMMM4Vm4hpxF5hJcSuBnKLGS2vszKFy5FtrPAM7ON9uCZAAinfB9rmS8pIdfZCnp42qXcXIyUYm9CQUQvvcyTg2eTnTuwkl")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1ldysDBq6mODT8G2UF1uV7NSV2n_DLUfZPNePIHJSbro")
+GOOGLE_SHEET_VENTES   = os.environ.get("GOOGLE_SHEET_VENTES", "104zrDmipMrXOzbXajmd9I6hf8WHVeogC8LU0GFXNk1I")
+GOOGLE_SHEET_FACTURES = os.environ.get("GOOGLE_SHEET_FACTURES", "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg")
+GOOGLE_SHEET_SAV      = os.environ.get("GOOGLE_SHEET_SAV", "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A")
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
 
 # ============================================================
 # GOOGLE SHEETS — MAPPING ONGLETS
 # ============================================================
 SHEET_MAP = {
-    "vn":                "VN",
-    "vo":                "VO",
-    "essai":             "VN",
-    "facture_vente":     "Factures_Vente",
-    "facture_mecanique": "Factures_Mecanique",
-    "facture_carrosserie":"Factures_Carrosserie",
-    "facture_pieces":    "Factures_Pieces",
-    "mainlevee":         "Mainlevee",
-    "rdi":               "RDI_Immatriculation",
-    "reclamation":       "Reclamations",
-    "sav":               "SAV_Atelier",
+    "VN":                  (GOOGLE_SHEET_VENTES,   "VN_Leads"),
+    "VO":                  (GOOGLE_SHEET_VENTES,   "VO_Leads"),
+    "essai":               (GOOGLE_SHEET_VENTES,   "Essais_VN"),
+    "facture_vente":       (GOOGLE_SHEET_FACTURES, "Factures_Vente"),
+    "facture_mecanique":   (GOOGLE_SHEET_FACTURES, "Factures_Mecanique"),
+    "facture_carrosserie": (GOOGLE_SHEET_FACTURES, "Factures_Carrosserie"),
+    "facture_pieces":      (GOOGLE_SHEET_FACTURES, "Factures_Pieces"),
+    "sav_atelier":         (GOOGLE_SHEET_SAV,      "SAV_Atelier"),
+    "reclamation":         (GOOGLE_SHEET_SAV,      "Reclamations"),
+    "mainlevee":           (GOOGLE_SHEET_SAV,      "Mainlevee"),
+    "rdi":                 (GOOGLE_SHEET_SAV,      "RDI_Immatriculation"),
 }
 
 def get_sheets_service():
@@ -44,7 +46,7 @@ def get_sheets_service():
         creds_dict = json.loads(GOOGLE_CREDS_JSON)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-        return build("sheets", "v4", credentials=creds)
+        return build("s", "v4", credentials=creds)
     except Exception as e:
         print(f"[SHEETS] Erreur connexion: {e}")
         return None
@@ -56,7 +58,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
             return False
 
         type_lead = lead_data.get("type", "vn")
-        sheet_name = SHEET_MAP.get(type_lead, "VN")
+        sheet_id, sheet_name = SHEET_MAP.get(type_lead, (GOOGLE_SHEET_VENTES, "VN_Leads"))
         now = datetime.now()
 
         # Chercher si le client existe deja (colonne L = index 11 = telephone WA)
