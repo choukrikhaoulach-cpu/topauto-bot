@@ -388,7 +388,7 @@ def appeler_groq(historique, texte):
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-        json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 800, "temperature": 0.2},
+        json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 5000, "temperature": 0.2},
         timeout=30
     )
     print(f"[GROQ] Status: {resp.status_code}")
