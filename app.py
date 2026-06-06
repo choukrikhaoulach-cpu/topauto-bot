@@ -12,19 +12,18 @@ app = Flask(__name__)
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRsiX2xJCM2rrKl1jTf1sZCxzqCReDUQGgeZC20IW92mlY0rwvwi3FeiY63ZCxvVMkJoBEZC8VeCEi9AjpgrSmhC2zdt2XGoxVc8fqQR287x2LEyfxluplZC3sulhLj2vFRAILowpbu9SmkSjfftzrOjZCRcfNZB4R7TklXZCqimK9s4XMMM4Vm4hpxF5hJcSuBnKLGS2vszKFy5FtrPAM7ON9uCZAAinfB9rmS8pIdfZCnp42qXcXIyUYm9CQUQvvcyTg2eTnTuwkl")
-PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
-VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
-CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "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")
+WHATSAPP_TOKEN    = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRsiX2xJCM2rrKl1jTf1sZCxzqCReDUQGgeZC20IW92mlY0rwvwi3FeiY63ZCxvVMkJoBEZC8VeCEi9AjpgrSmhC2zdt2XGoxVc8fqQR287x2LEyfxluplZC3sulhLj2vFRAILowpbu9SmkSjfftzrOjZCRcfNZB4R7TklXZCqimK9s4XMMM4Vm4hpxF5hJcSuBnKLGS2vszKFy5FtrPAM7ON9uCZAAinfB9rmS8pIdfZCnp42qXcXIyUYm9CQUQvvcyTg2eTnTuwkl")
+PHONE_NUMBER_ID   = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
+VERIFY_TOKEN      = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
+CONSEILLER_TEL    = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
 GOOGLE_SHEET_VENTES   = os.environ.get("GOOGLE_SHEET_VENTES", "")
 GOOGLE_SHEET_FACTURES = os.environ.get("GOOGLE_SHEET_FACTURES", "")
 GOOGLE_SHEET_SAV      = os.environ.get("GOOGLE_SHEET_SAV", "")
 GOOGLE_CREDS_JSON     = os.environ.get("GOOGLE_CREDS_JSON", "")
 
 # ============================================================
-# GOOGLE SHEETS — MAPPING ONGLETS
-# BUG FIX 1 : utilise sheet_id dynamique au lieu de GOOGLE_SHEET_ID fixe
+# GOOGLE SHEETS — MAPPING
 # ============================================================
 def get_sheet_config(type_lead):
     mapping = {
@@ -50,12 +49,12 @@ def get_sheets_service():
         creds_dict = json.loads(GOOGLE_CREDS_JSON)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-        # BUG FIX 2 : "sheets" au lieu de "s"
         return build("sheets", "v4", credentials=creds)
     except Exception as e:
         print(f"[SHEETS] Erreur connexion: {e}")
         return None
-        
+
+
 def verifier_statut_rdi(chassis):
     """Cherche le chassis dans RDI_Immatriculation et retourne le statut"""
     try:
@@ -68,38 +67,35 @@ def verifier_statut_rdi(chassis):
         ).execute()
         rows = result.get("values", [])
         chassis_lower = chassis.lower().strip()
-        for r in rows[1:]:  # skip header
+        for r in rows[1:]:  # ignorer ligne d'en-tête
             if len(r) > 6 and r[6].lower().strip() == chassis_lower:
                 statut = r[10] if len(r) > 10 else "En cours de traitement"
                 date_dispo = r[11] if len(r) > 11 else ""
-                return {"statut": statut, "date_dispo": date_dispo}
-        return {"statut": "NON_TROUVE", "date_dispo": ""}
+                return {"statut": statut, "date_dispo": date_dispo, "trouve": True}
+        return {"statut": "NON_TROUVE", "date_dispo": "", "trouve": False}
     except Exception as e:
-        print(f"[RDI] Erreur vérification: {e}")
+        print(f"[RDI] Erreur verification: {e}")
         return None
+
 
 def enregistrer_lead_sheets(telephone, langue, lead_data):
     try:
         service = get_sheets_service()
         if not service:
             return False
-
         type_lead = lead_data.get("type", "vn")
         sheet_id, sheet_name = get_sheet_config(type_lead)
-
         if not sheet_id:
             print(f"[SHEETS] Sheet ID manquant pour type={type_lead}")
             return False
-
         now = datetime.now()
 
-        # Chercher si le client existe deja (colonne L = index 11 = telephone WA)
+        # Chercher ligne existante par numero WhatsApp (colonne L = index 11)
         result = service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
             range=f"{sheet_name}!A:P"
         ).execute()
         rows = result.get("values", [])
-
         existing_row_index = None
         for i, r in enumerate(rows):
             if len(r) > 11 and r[11] == telephone:
@@ -141,7 +137,6 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
                 body={"values": [row]}
             ).execute()
             print(f"[SHEETS] Nouveau lead dans {sheet_name}")
-
         return True
     except Exception as e:
         print(f"[SHEETS] Erreur: {e}")
@@ -165,7 +160,7 @@ REGLES ABSOLUES :
 4. Lorsqu'une information n'est pas disponible, proposer un rappel par un conseiller.
 5. Ne jamais communiquer d'informations internes ou confidentielles.
 6. INTERDIT de répéter le message de bienvenue dans une conversation déjà commencée.
-7. Pour TOUTE demande (RDI, facture, véhicule, SAV, mainlevée...) -> répondre DIRECTEMENT sans introduction ni message de bienvenue.
+7. Pour TOUTE demande -> répondre DIRECTEMENT sans introduction ni message de bienvenue.
 
 HORAIRES :
 Lun-Ven 8h00-18h30 | Sam Renault 8h30-13h00 | Sam Dacia 8h30-15h00 | Dim fermé
@@ -178,82 +173,75 @@ GPS : 33.683384 N, 7.409769 W
 Facebook : @topauto | Instagram : @top_auto_mohammedia
 
 GAMME DACIA (véhicules neufs) :
-Spring électrique (24.3kWh 70/100ch Essential/Extreme) | Sandero Streetway (2026 écran 10p 1.0SCe65/TCe100/dCi102ch Essential-Journey) | Sandero Stepway (17cm TCe100/dCi102ch CVT) | Logan (coffre528L SCe65/TCe100/dCi102ch) | Jogger (5ou7pl coffre1807L HEV140ch) | Duster 2025 (dCi115/TCe130ch Essential-Extreme) | Bigster 2025 (HEV155ch toitPano Essential-Journey)
+Spring électrique (24.3kWh 70/100ch Essential/Extreme) | Sandero Streetway (2026 écran 10p SCe65/TCe100/dCi102ch Essential-Journey) | Sandero Stepway (TCe100/dCi102ch CVT) | Logan (coffre528L SCe65/TCe100/dCi102ch) | Jogger (5ou7pl HEV140ch) | Duster 2025 (dCi115/TCe130ch Essential-Extreme) | Bigster 2025 (HEV155ch toitPano Essential-Journey)
 
 GAMME RENAULT VP (véhicules neufs) :
-Clio 5/6 (TCe100/diesel/ETech145ch Équilibre-Esprit Alpine) | Captur (OpenRLink ETech145ch) | R5 ETech (électrique 40kWh120/52kWh150ch 400km) | Express (diesel 95/115ch) | Mégane Sedan (coffre475L diesel) | Mégane ETech (60kWh 450km 220ch) | Arkana (ETech145ch 4.5L/100km) | Austral (ETech200ch OpenRLink 2025) | Kardian (SOMACA TCe100/BluedCi102ch)
+Clio 5/6 (TCe100/diesel/ETech145ch) | Captur (ETech145ch) | R5 ETech (électrique 400km) | Express (diesel) | Mégane Sedan | Mégane ETech (60kWh 450km) | Arkana (ETech145ch) | Austral (ETech200ch 2025) | Kardian (SOMACA)
 
 GAMME RENAULT VU :
-Express Van (800kg 3.3m3 dCi75ch) | Trafic (Combi9pl 1400kg dCi150ch) | Master (8-17m3 1700kg dCi145/180ch)
+Express Van | Trafic Combi | Master
 
 VEHICULES D'OCCASION :
-Stock disponible sur : https://top-auto.ma/Voitures_occasion
-Pour tout renseignement ou mise en relation avec un conseiller VO → collecter prénom, téléphone.
+Stock : https://top-auto.ma/Voitures_occasion
+Mise en relation conseiller VO → collecter prénom, téléphone → type=vo
 
-SAV — PRISE DE RDV ATELIER :
-Formulaire officiel : https://top-auto.ma/Entretienr%C3%A9paration
-Message type : "Pour planifier votre rendez-vous atelier, nous vous invitons à compléter notre formulaire en ligne : https://top-auto.ma/Entretienr%C3%A9paration. Un conseiller vous contactera rapidement pour confirmer votre rendez-vous."
+SAV — PRISE DE RDV :
+Formulaire : https://top-auto.ma/Entretienr%C3%A9paration
+Message : "Pour planifier votre rendez-vous, complétez notre formulaire : https://top-auto.ma/Entretienr%C3%A9paration. Un conseiller vous confirmera le rendez-vous."
+Collecter prénom, nom, téléphone → type=sav_atelier
 
 MAINLEVEE :
-Documents requis (client se présente en concession) :
-- Copie de la CIN
-- Copie de la carte grise
-- Relevé bancaire cacheté mentionnant le dernier prélèvement RCI Finance
-- Justificatif de paiement de la valeur résiduelle (si contrat avec valeur résiduelle)
-Si client demande où payer la valeur résiduelle → RIB RCI Finance Maroc : 007 780 00000 054111 70005 29
+Documents requis (présentation en concession) :
+- Copie CIN
+- Copie carte grise
+- Relevé bancaire cacheté (dernier prélèvement RCI Finance)
+- Justificatif paiement valeur résiduelle (si applicable)
+RIB RCI Finance Maroc : 007 780 00000 054111 70005 29
 Collecter : prénom, nom, téléphone, chassis → type=mainlevee
 
 RDI (Récépissé de Dépôt d'Immatriculation) :
-Traité uniquement si plus de 30 jours depuis la livraison.
+Valable 30 jours après dépôt dossier immatriculation.
+Traité uniquement si plus de 30 jours depuis livraison.
 Demander d'abord : "Votre véhicule a-t-il été livré il y a plus de 30 jours ?"
-Si oui → demander si particulier ou société.
+Puis : "Êtes-vous un particulier ou une société ?"
 Particulier → collecter : chassis, CIN, téléphone → type=rdi
-Société → collecter : chassis, numéro RC, téléphone → type=rdi
+Société → collecter : chassis, RC, téléphone → type=rdi
+IMPORTANT : après collecte, le système vérifiera automatiquement le statut dans nos registres.
 
 SUIVI TRAVAUX / COMMANDES / PIÈCES :
-Rediriger vers : 0523303194
-Message : "Pour toute information concernant l'avancement des travaux, le suivi de commande ou la réception des pièces, veuillez contacter notre service au 0523303194. Un conseiller vous répondra rapidement."
+Message : "Pour l'avancement des travaux, suivi commande ou réception pièces, contactez le 0523303194."
 
 DEMANDES DE FACTURES :
-Identifier le type avant de collecter :
-- Facture vente VN/VO → collecter : chassis, nom titulaire, téléphone → type=facture_vente
-- Facture atelier mécanique → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_mecanique
-- Facture carrosserie → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_carrosserie
-- Facture pièces de rechange → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_pieces
+Identifier le type :
+- Vente VN/VO → chassis, nom, téléphone → type=facture_vente
+- Mécanique → matricule/chassis, nom, téléphone → type=facture_mecanique
+- Carrosserie → matricule/chassis, nom, téléphone → type=facture_carrosserie
+- Pièces → matricule/chassis, nom, téléphone → type=facture_pieces
 
 ESSAI VEHICULE NEUF :
-Collecter : prénom, nom, téléphone, modèle souhaité, ville → type=essai
-Transmettre au service commercial.
+Collecter : prénom, nom, téléphone, modèle, ville → type=essai
 
 RECLAMATIONS :
-Collecter : prénom, nom, téléphone, chassis (si applicable), description détaillée → type=reclamation
-Enregistrer et transmettre immédiatement au responsable. Confirmer réponse dans 48h.
+Collecter : prénom, nom, téléphone, chassis (si applicable), description → type=reclamation
+Confirmer réponse dans 48h.
 
-INFORMATIONS SUR LES VEHICULES NEUFS :
-Présenter les modèles disponibles, versions et finitions, caractéristiques principales.
-Proposer un essai ou mise en relation avec conseiller commercial → type=vn
-
-COLLECTE D'INFORMATIONS — RÈGLE STRICTE :
-Toujours une seule question par message. Dans l'ordre : prénom → nom → téléphone → autres infos selon le type de demande.
+COLLECTE — RÈGLE STRICTE :
+Une seule question par message. Ordre : prénom → nom → téléphone → autres infos.
 
 LANGUE :
-Caractères arabes → répondre UNIQUEMENT en arabe
-Par défaut → français
-La darija marocaine latinisée est comprise → répondre en français
+Arabe → répondre en arabe | Darija latinisée → répondre en français | Défaut → français
 
-CONFIRMATION LEAD — QUAND TOUTES LES INFOS SONT COLLECTÉES :
-Terminer par un récapitulatif :
-"Récapitulatif de votre demande :
+CONFIRMATION LEAD :
+"Récapitulatif :
 - Prénom : [prenom]
 - Téléphone : [tel]
-- [autres infos collectées]
+- [autres infos]
 Notre équipe vous contactera très prochainement. Merci pour votre confiance."
 
-FORMAT DE RÉPONSE OBLIGATOIRE :
-Toujours deux parties séparées par |||
-Format : TEXTE_VISIBLE_CLIENT|||TAG_INTERNE
+FORMAT OBLIGATOIRE :
+TEXTE_VISIBLE|||TAG
 
-TAGS DISPONIBLES :
+TAGS :
 |||RIEN
 |||LEAD:prenom=X|nom=X|tel=X|modele=X|ville=X|type=vn
 |||LEAD:prenom=X|nom=X|tel=X|modele=X|type=vo
@@ -268,17 +256,13 @@ TAGS DISPONIBLES :
 |||LEAD:prenom=X|nom=X|tel=X|chassis=X|type=mainlevee
 |||FIN
 
-RÈGLES FORMAT :
-- JAMAIS écrire ||| ou LEAD ou TAG dans le texte visible au client
-- Si prénom ou téléphone manquants → |||RIEN
-- Sauvegarder LEAD seulement si prénom ET téléphone sont réels (pas X, pas vide)
-- Aucun emoji dans les réponses
+RÈGLES :
+- JAMAIS écrire ||| ou LEAD dans le texte visible
+- LEAD seulement si prénom ET téléphone réels
+- Aucun emoji
 - Terminer par : Merci pour votre confiance. (FR) ou شكرا على ثقتك. (AR)"""
 
 
-# ============================================================
-# SESSION
-# ============================================================
 def get_session(telephone):
     if telephone not in sessions:
         sessions[telephone] = {"historique": [], "langue": "FR", "infos": {}}
@@ -291,12 +275,7 @@ def get_session(telephone):
 def envoyer_whatsapp(telephone, message):
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-    data = {
-        "messaging_product": "whatsapp",
-        "to": telephone,
-        "type": "text",
-        "text": {"body": message}
-    }
+    data = {"messaging_product": "whatsapp", "to": telephone, "type": "text", "text": {"body": message}}
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=10)
         print(f"[WA] Text {resp.status_code}")
@@ -357,9 +336,9 @@ def envoyer_menu_vehicules(telephone):
 
 def envoyer_menu_autre(telephone):
     envoyer_boutons(telephone, "Quelle est votre demande ?", [
-        {"id": "btn_facture",    "title": "Demande Facture"},
-        {"id": "btn_mainlevee",  "title": "Mainlevée"},
-        {"id": "btn_reclamation","title": "Réclamation"}
+        {"id": "btn_facture",     "title": "Demande Facture"},
+        {"id": "btn_mainlevee",   "title": "Mainlevée"},
+        {"id": "btn_reclamation", "title": "Réclamation"}
     ])
 
 
@@ -368,9 +347,9 @@ def notifier_conseiller(telephone, nom_client, lead_data):
     _, sheet_name = get_sheet_config(type_lead)
     lignes = [
         f"--- NOUVEAU LEAD : {sheet_name} ---",
-        f"WhatsApp client : {telephone}",
+        f"WhatsApp : {telephone}",
         f"Nom : {lead_data.get('nom', '')} {lead_data.get('prenom', '')}",
-        f"Tel client : {lead_data.get('tel', 'NC')}",
+        f"Tel : {lead_data.get('tel', 'NC')}",
     ]
     for k, label in [
         ("modele","Modèle"), ("ville","Ville"), ("chassis","Châssis"),
@@ -379,7 +358,7 @@ def notifier_conseiller(telephone, nom_client, lead_data):
     ]:
         if lead_data.get(k):
             lignes.append(f"{label} : {lead_data[k]}")
-    lignes.append(f"Statut : {'URGENT - 48h' if type_lead == 'reclamation' else 'À RAPPELER'}")
+    lignes.append(f"Statut : {'URGENT 48h' if type_lead == 'reclamation' else 'À RAPPELER'}")
     envoyer_whatsapp(CONSEILLER_TEL, "\n".join(lignes))
 
 
@@ -401,7 +380,6 @@ def appeler_groq(historique, texte):
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        # BUG FIX 3 : modèle plus puissant + max_tokens augmenté
         json={"model": "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 800, "temperature": 0.2},
         timeout=30
     )
@@ -412,10 +390,13 @@ def appeler_groq(historique, texte):
 
 
 def appeler_groq_vision(image_base64, mime_type):
-    prompt_vision = """Tu es un expert automobile. Analyse cette image envoyée par un client de Top Auto Mohammedia.
-Identifie : le problème visible (rayure, bosselure, voyant allumé, pneu endommagé, panne, autre).
-Donne : une description professionnelle du problème, une classification (carrosserie / mécanique / électronique / pneu / autre) et une recommandation claire (passage atelier SAV recommandé / surveillance / aucune action urgente).
-Réponds en français de manière concise et professionnelle. Termine par : Merci pour votre confiance."""
+    prompt_vision = """Tu es un expert automobile de Top Auto Mohammedia.
+Analyse cette image et fournis :
+1. Description du problème visible (rayure, bosselure, voyant, pneu, panne...)
+2. Classification : carrosserie / mécanique / électronique / pneu / autre
+3. Niveau de gravité : faible / modéré / urgent
+4. Recommandation : passage atelier SAV / surveillance / aucune action urgente
+Réponds en français, professionnel et concis. Termine par : Merci pour votre confiance."""
     messages = [{"role": "user", "content": [
         {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}},
         {"type": "text", "text": prompt_vision}
@@ -430,28 +411,6 @@ Réponds en français de manière concise et professionnelle. Termine par : Merc
     if resp.status_code != 200:
         return "Je n'ai pas pu analyser cette image. Merci de vous présenter en atelier pour un diagnostic. Merci pour votre confiance."
     return resp.json()["choices"][0]["message"]["content"]
-
-
-def verifier_statut_rdi(chassis):
-    try:
-        service = get_sheets_service()
-        if not service or not GOOGLE_SHEET_SAV:
-            return None
-        result = service.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_SAV,
-            range="RDI_Immatriculation!A:P"
-        ).execute()
-        rows = result.get("values", [])
-        chassis_lower = chassis.lower().strip()
-        for r in rows[1:]:
-            if len(r) > 6 and r[6].lower().strip() == chassis_lower:
-                statut = r[10] if len(r) > 10 else "En cours de traitement"
-                date_dispo = r[11] if len(r) > 11 else ""
-                return {"statut": statut, "date_dispo": date_dispo}
-        return {"statut": "NON_TROUVE", "date_dispo": ""}
-    except Exception as e:
-        print(f"[RDI] Erreur verification: {e}")
-        return None
 
 
 def traiter_reponse_groq(raw):
@@ -498,7 +457,7 @@ def receive_message():
 
         # ---- AUDIO ----
         if msg_type == "audio":
-            print(f"[AUDIO] Message vocal de {telephone}")
+            print(f"[AUDIO] {telephone}")
             envoyer_whatsapp(telephone, "Message vocal reçu, transcription en cours...")
             media_id = message.get("audio", {}).get("id")
             if not media_id:
@@ -507,7 +466,7 @@ def receive_message():
             headers_wa = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
             resp_url = requests.get(f"https://graph.facebook.com/v20.0/{media_id}", headers=headers_wa, timeout=10)
             if resp_url.status_code != 200:
-                envoyer_whatsapp(telephone, "Erreur lors du traitement audio. Appelez-nous au 0523303194.")
+                envoyer_whatsapp(telephone, "Erreur traitement audio. Appelez le 0523303194.")
                 return jsonify({"status": "ok"}), 200
             audio_url = resp_url.json().get("url")
             resp_audio = requests.get(audio_url, headers=headers_wa, timeout=20)
@@ -525,7 +484,7 @@ def receive_message():
                     return jsonify({"status": "ok"}), 200
                 texte = resp_whisper.text.strip()
                 if not texte:
-                    envoyer_whatsapp(telephone, "Je n'ai pas pu comprendre le message vocal. Merci d'écrire votre demande.")
+                    envoyer_whatsapp(telephone, "Message vocal incompréhensible. Merci d'écrire votre demande.")
                     return jsonify({"status": "ok"}), 200
                 envoyer_whatsapp(telephone, f"J'ai bien entendu : \"{texte}\"")
             except Exception as e:
@@ -535,8 +494,8 @@ def receive_message():
 
         # ---- IMAGE ----
         elif msg_type == "image":
-            print(f"[IMAGE] Photo reçue de {telephone}")
-            envoyer_whatsapp(telephone, "Photo reçue, analyse en cours par notre Assistant IA...")
+            print(f"[IMAGE] {telephone}")
+            envoyer_whatsapp(telephone, "Photo reçue, analyse en cours...")
             media_id = message.get("image", {}).get("id")
             mime_type = message.get("image", {}).get("mime_type", "image/jpeg")
             if not media_id:
@@ -556,21 +515,19 @@ def receive_message():
             analyse = appeler_groq_vision(image_b64, mime_type)
             envoyer_whatsapp(telephone, analyse)
             envoyer_boutons(telephone, "Souhaitez-vous prendre rendez-vous en atelier ?", [
-                {"id": "btn_rdv_sav",       "title": "Prendre RDV"},
-                {"id": "btn_autre_question","title": "Autre question"}
+                {"id": "btn_rdv_sav",        "title": "Prendre RDV"},
+                {"id": "btn_autre_question", "title": "Autre question"}
             ])
             return jsonify({"status": "ok"}), 200
 
         # ---- TEXTE ----
         elif msg_type == "text":
             texte = message.get("text", {}).get("body", "").strip()
-            button_id = None
 
         # ---- BOUTON INTERACTIF ----
         elif msg_type == "interactive":
             interactive = message.get("interactive", {})
             if interactive.get("type") == "button_reply":
-                button_id = interactive["button_reply"]["id"]
                 texte = interactive["button_reply"]["title"]
             else:
                 return jsonify({"status": "ok"}), 200
@@ -590,7 +547,7 @@ def receive_message():
         salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir",
                        "مرحبا", "السلام", "ahlan", "bjr", "bsr", "coucou"]
 
-        # BUG FIX 4 : intercepter salutations AVANT Groq pour éviter répétition bienvenue
+        # Salutation sans historique -> bienvenue avec boutons
         mots = texte_lower.split()
         if msg_type == "text" and len(mots) <= 2 and any(s in texte_lower for s in salutations) and not session["historique"]:
             envoyer_bienvenue(telephone)
@@ -599,7 +556,6 @@ def receive_message():
         # ---- GESTION BOUTONS ----
         if msg_type == "interactive":
             button_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
-
             if button_id == "btn_vehicules":
                 envoyer_menu_vehicules(telephone)
                 return jsonify({"status": "ok"}), 200
@@ -609,7 +565,7 @@ def receive_message():
                 envoyer_menu_autre(telephone)
                 return jsonify({"status": "ok"}), 200
             elif button_id == "btn_vn":
-                texte = "Je veux des informations sur les véhicules neufs Renault et Dacia disponibles"
+                texte = "Je veux des informations sur les véhicules neufs disponibles"
             elif button_id == "btn_vo":
                 texte = "Je veux des informations sur les véhicules d'occasion disponibles"
             elif button_id == "btn_essai":
@@ -622,9 +578,9 @@ def receive_message():
                 texte = "J'ai une réclamation à déposer"
             elif button_id == "btn_rdv_sav":
                 envoyer_whatsapp(telephone,
-                    "Pour planifier votre rendez-vous atelier, nous vous invitons à compléter notre formulaire en ligne :\n"
+                    "Pour planifier votre rendez-vous atelier :\n"
                     "https://top-auto.ma/Entretienr%C3%A9paration\n\n"
-                    "Un conseiller vous contactera rapidement pour confirmer votre rendez-vous. Merci pour votre confiance.")
+                    "Un conseiller vous contactera pour confirmer. Merci pour votre confiance.")
                 return jsonify({"status": "ok"}), 200
             elif button_id == "btn_autre_question":
                 envoyer_whatsapp(telephone, "Je suis à votre écoute. Comment puis-je vous aider ?")
@@ -641,6 +597,38 @@ def receive_message():
         if not texte_client or len(texte_client) < 3:
             texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
+        # ---- VERIFICATION RDI EN TEMPS REEL ----
+        if tag.startswith("LEAD:") and "type=rdi" in tag:
+            lead_data_rdi = extraire_lead(tag)
+            if lead_data_rdi and lead_data_rdi.get("chassis"):
+                print(f"[RDI] Verification chassis: {lead_data_rdi['chassis']}")
+                statut_info = verifier_statut_rdi(lead_data_rdi["chassis"])
+                if statut_info:
+                    if statut_info["trouve"]:
+                        statut = statut_info["statut"]
+                        date_dispo = statut_info["date_dispo"]
+                        texte_client = (
+                            f"Après vérification de votre dossier dans nos registres :\n\n"
+                            f"Numéro de châssis : {lead_data_rdi['chassis']}\n"
+                            f"Statut du dossier : {statut}"
+                        )
+                        if date_dispo:
+                            texte_client += f"\nDate de disponibilité : {date_dispo}"
+                        texte_client += "\n\nPour toute question, contactez-nous au 0523303194. Merci pour votre confiance."
+                    else:
+                        texte_client = (
+                            f"Après vérification, le dossier pour le châssis {lead_data_rdi['chassis']} "
+                            "n'a pas encore été enregistré dans notre système d'immatriculation.\n\n"
+                            "Notre équipe va procéder à une vérification approfondie et vous contactera "
+                            "très prochainement. Merci pour votre confiance."
+                        )
+                else:
+                    texte_client = (
+                        "Nous n'avons pas pu accéder au système de vérification pour le moment. "
+                        "Notre équipe vous contactera très prochainement avec l'état de votre dossier. "
+                        "Merci pour votre confiance."
+                    )
+
         print(f"[BOT]: {texte_client[:120]}...")
         print(f"[TAG]: {tag}")
 
@@ -648,30 +636,8 @@ def receive_message():
         session["historique"].append({"role": "assistant", "content": texte_client})
         if len(session["historique"]) > 20:
             session["historique"] = session["historique"][-20:]
-        
-        
-        # Vérification RDI en temps réel
-        if tag.startswith("LEAD:") and "type=rdi" in tag:
-            lead_data_rdi = extraire_lead(tag)
-            if lead_data_rdi and lead_data_rdi.get("chassis"):
-                statut_info = verifier_statut_rdi(lead_data_rdi["chassis"])
-                if statut_info and statut_info["statut"] != "NON_TROUVE":
-                    statut = statut_info["statut"]
-                    date_dispo = statut_info["date_dispo"]
-                    texte_client = f"Après vérification de votre dossier :\n\nChassis : {lead_data_rdi['chassis']}\nStatut : {statut}"
-                    if date_dispo:
-                        texte_client += f"\nDate de disponibilité : {date_dispo}"
-                    texte_client += "\n\nMerci pour votre confiance."
-                elif statut_info and statut_info["statut"] == "NON_TROUVE":
-                    texte_client = (
-                        f"Après vérification, le dossier pour le chassis {lead_data_rdi['chassis']} "
-                        "n'a pas encore été enregistré dans notre système.\n\n"
-                        "Notre équipe va vérifier et vous contactera très prochainement. Merci pour votre confiance."
-                    )
 
         envoyer_whatsapp(telephone, texte_client)
-
-        if tag.startswith("LEAD:"):
 
         if tag.startswith("LEAD:"):
             lead_data = extraire_lead(tag)
