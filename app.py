@@ -412,8 +412,8 @@ def traiter_reponse_groq(raw):
         idx = raw.rfind("|||")
         texte, tag = raw[:idx].strip(), raw[idx+3:].strip()
     texte = re.sub(r'\|\|\|[\s\S]*', '', texte)
-    texte = re.sub(r'LEAD:[\w=|.\s\u0600-\u06FF-]*', '', texte)
-    texte = texte.replace("|||", "").replace("RIEN", "").replace("FIN", "").replace("BOUTONS_BIENVENUE", "").strip()
+    texte = re.sub(r'LEAD:[\w=|.\s\u0600-\u06FF]*', '', texte)
+    texte = texte.replace("|||", "").replace("RIEN", "").replace("FIN", "").strip()
     return texte, tag
 
 
@@ -600,7 +600,7 @@ def receive_message():
             envoyer_bienvenue(telephone)
             return jsonify({"status": "ok"}), 200
 
-        if not texte_client or len(texte_client) < 5:
+        if not texte_client or len(texte_client) < 3:
             texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
         print(f"[BOT]: {texte_client[:100]}...")
