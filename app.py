@@ -388,7 +388,7 @@ def appeler_groq(historique, texte):
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-        json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 5000, "temperature": 0.2},
+        json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 400, "temperature": 0.2},
         timeout=30
     )
     print(f"[GROQ] Status: {resp.status_code}")
@@ -646,8 +646,8 @@ def receive_message():
 
         session["historique"].append({"role": "user", "content": texte})
         session["historique"].append({"role": "assistant", "content": texte_client})
-        if len(session["historique"]) > 20:
-            session["historique"] = session["historique"][-20:]
+        if len(session["historique"]) > 10:
+            session["historique"] = session["historique"][-10:]
 
         envoyer_whatsapp(telephone, texte_client)
 
