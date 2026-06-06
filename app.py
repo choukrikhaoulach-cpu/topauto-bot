@@ -60,6 +60,7 @@ def verifier_statut_rdi(chassis):
     try:
         service = get_sheets_service()
         if not service or not GOOGLE_SHEET_SAV:
+            print("[RDI] Service ou Sheet ID manquant")
             return None
         result = service.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_SAV,
@@ -67,7 +68,7 @@ def verifier_statut_rdi(chassis):
         ).execute()
         rows = result.get("values", [])
         chassis_lower = chassis.lower().strip()
-        for r in rows[1:]:  # ignorer ligne d'en-tête
+        for r in rows[1:]:
             if len(r) > 6 and r[6].lower().strip() == chassis_lower:
                 statut = r[10] if len(r) > 10 else "En cours de traitement"
                 date_dispo = r[11] if len(r) > 11 else ""
@@ -90,7 +91,6 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
             return False
         now = datetime.now()
 
-        # Chercher ligne existante par numero WhatsApp (colonne L = index 11)
         result = service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
             range=f"{sheet_name}!A:P"
@@ -206,9 +206,9 @@ RDI — ordre de collecte STRICT :
 4. Numéro de châssis
 5. CIN (particulier) ou RC (société)
 6. Téléphone
-Particulier → collecter : chassis, CIN, téléphone → type=rdi
-Société → collecter : chassis, RC, téléphone → type=rdi
-IMPORTANT : après collecte, le système vérifiera automatiquement le statut dans nos registres.
+Particulier → type=rdi avec cin=X
+Société → type=rdi avec rc=X
+IMPORTANT : après collecte complète, le système vérifiera automatiquement le statut dans nos registres.
 
 SUIVI TRAVAUX / COMMANDES / PIÈCES :
 Message : "Pour l'avancement des travaux, suivi commande ou réception pièces, contactez le 0523303194."
@@ -411,7 +411,7 @@ Réponds en français, professionnel et concis. Termine par : Merci pour votre c
     )
     print(f"[VISION] Status: {resp.status_code}")
     if resp.status_code != 200:
-        return "Je n'ai pas pu analyser cette image. Merci de vous présenter en atelier pour un diagnostic. Merci pour votre confiance."
+        return "Je n'ai pas pu analyser cette image. Merci de vous présenter en atelier. Merci pour votre confiance."
     return resp.json()["choices"][0]["message"]["content"]
 
 
@@ -549,7 +549,6 @@ def receive_message():
         salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir",
                        "مرحبا", "السلام", "ahlan", "bjr", "bsr", "coucou"]
 
-        # Salutation sans historique -> bienvenue avec boutons
         mots = texte_lower.split()
         if msg_type == "text" and len(mots) <= 2 and any(s in texte_lower for s in salutations) and not session["historique"]:
             envoyer_bienvenue(telephone)
@@ -600,37 +599,43 @@ def receive_message():
             texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
         # ---- VERIFICATION RDI EN TEMPS REEL ----
+        # BUG FIX : utiliser chassis_rdi directement au lieu de lead_data_rdi["chassis"]
         if "type=rdi" in tag and "chassis=" in tag:
             chassis_match = re.search(r'chassis=([^|]+)', tag)
             chassis_rdi = chassis_match.group(1).strip() if chassis_match else None
-            lead_data_rdi = extraire_lead(tag)
-            if chassis_rdi:
+            if chassis_rdi and chassis_rdi not in ["X", "", "null"]:
                 print(f"[RDI] Verification chassis: {chassis_rdi}")
-                statut_info = verifier_statut_rdi(lead_data_rdi["chassis"])
-                if statut_info:
-                    if statut_info["trouve"]:
-                        statut = statut_info["statut"]
-                        date_dispo = statut_info["date_dispo"]
+                try:
+                    statut_info = verifier_statut_rdi(chassis_rdi)
+                    if statut_info is None:
+                        texte_client = (
+                            "Nous n'avons pas pu accéder au système de vérification pour le moment.\n"
+                            "Notre équipe vous contactera très prochainement avec l'état de votre dossier.\n"
+                            "Merci pour votre confiance."
+                        )
+                    elif statut_info.get("trouve"):
+                        statut = statut_info.get("statut", "En cours de traitement")
+                        date_dispo = statut_info.get("date_dispo", "")
                         texte_client = (
                             f"Après vérification de votre dossier dans nos registres :\n\n"
-                            f"Numéro de châssis : {chassis_rdi}\n"
-                            f"Statut du dossier : {statut}"
+                            f"Châssis : {chassis_rdi}\n"
+                            f"Statut : {statut}"
                         )
                         if date_dispo:
                             texte_client += f"\nDate de disponibilité : {date_dispo}"
-                        texte_client += "\n\nPour toute question, contactez-nous au 0523303194. Merci pour votre confiance."
+                        texte_client += "\n\nPour toute question, contactez le 0523303194. Merci pour votre confiance."
                     else:
                         texte_client = (
                             f"Après vérification, le dossier pour le châssis {chassis_rdi} "
-                            "n'a pas encore été enregistré dans notre système d'immatriculation.\n\n"
-                            "Notre équipe va procéder à une vérification approfondie et vous contactera "
-                            "très prochainement. Merci pour votre confiance."
+                            "n'est pas encore enregistré dans notre système d'immatriculation.\n\n"
+                            "Notre équipe va procéder à une vérification et vous contactera très prochainement.\n"
+                            "Merci pour votre confiance."
                         )
-                else:
+                except Exception as e:
+                    print(f"[RDI] Erreur: {e}")
                     texte_client = (
-                        "Nous n'avons pas pu accéder au système de vérification pour le moment. "
-                        "Notre équipe vous contactera très prochainement avec l'état de votre dossier. "
-                        "Merci pour votre confiance."
+                        "Erreur lors de la vérification du dossier. "
+                        "Notre équipe vous contactera. Merci pour votre confiance."
                     )
 
         print(f"[BOT]: {texte_client[:120]}...")
