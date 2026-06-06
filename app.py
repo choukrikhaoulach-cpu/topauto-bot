@@ -199,11 +199,13 @@ Documents requis (présentation en concession) :
 RIB RCI Finance Maroc : 007 780 00000 054111 70005 29
 Collecter : prénom, nom, téléphone, chassis → type=mainlevee
 
-RDI (Récépissé de Dépôt d'Immatriculation) :
-Valable 30 jours après dépôt dossier immatriculation.
-Traité uniquement si plus de 30 jours depuis livraison.
-Demander d'abord : "Votre véhicule a-t-il été livré il y a plus de 30 jours ?"
-Puis : "Êtes-vous un particulier ou une société ?"
+RDI — ordre de collecte STRICT :
+1. "Votre véhicule a-t-il été livré il y a plus de 30 jours ?"
+2. "Êtes-vous un particulier ou une société ?"
+3. Prénom
+4. Numéro de châssis
+5. CIN (particulier) ou RC (société)
+6. Téléphone
 Particulier → collecter : chassis, CIN, téléphone → type=rdi
 Société → collecter : chassis, RC, téléphone → type=rdi
 IMPORTANT : après collecte, le système vérifiera automatiquement le statut dans nos registres.
@@ -598,10 +600,12 @@ def receive_message():
             texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
         # ---- VERIFICATION RDI EN TEMPS REEL ----
-        if tag.startswith("LEAD:") and "type=rdi" in tag:
+        if "type=rdi" in tag and "chassis=" in tag:
+            chassis_match = re.search(r'chassis=([^|]+)', tag)
+            chassis_rdi = chassis_match.group(1).strip() if chassis_match else None
             lead_data_rdi = extraire_lead(tag)
-            if lead_data_rdi and lead_data_rdi.get("chassis"):
-                print(f"[RDI] Verification chassis: {lead_data_rdi['chassis']}")
+            if chassis_rdi:
+                print(f"[RDI] Verification chassis: {chassis_rdi}")
                 statut_info = verifier_statut_rdi(lead_data_rdi["chassis"])
                 if statut_info:
                     if statut_info["trouve"]:
@@ -609,7 +613,7 @@ def receive_message():
                         date_dispo = statut_info["date_dispo"]
                         texte_client = (
                             f"Après vérification de votre dossier dans nos registres :\n\n"
-                            f"Numéro de châssis : {lead_data_rdi['chassis']}\n"
+                            f"Numéro de châssis : {chassis_rdi}\n"
                             f"Statut du dossier : {statut}"
                         )
                         if date_dispo:
@@ -617,7 +621,7 @@ def receive_message():
                         texte_client += "\n\nPour toute question, contactez-nous au 0523303194. Merci pour votre confiance."
                     else:
                         texte_client = (
-                            f"Après vérification, le dossier pour le châssis {lead_data_rdi['chassis']} "
+                            f"Après vérification, le dossier pour le châssis {chassis_rdi} "
                             "n'a pas encore été enregistré dans notre système d'immatriculation.\n\n"
                             "Notre équipe va procéder à une vérification approfondie et vous contactera "
                             "très prochainement. Merci pour votre confiance."
