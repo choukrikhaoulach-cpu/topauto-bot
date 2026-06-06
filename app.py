@@ -13,6 +13,10 @@ app = Flask(__name__)
 # CONFIGURATION — lues au démarrage
 # ============================================================
 GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "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")
+# Fallback IDs si Railway ne passe pas les variables
+_SHEET_VENTES   = "104zrDmipMrXOzbXajmd9I6hf8WHVeogC8LU0GFXNk1I"
+_SHEET_FACTURES = "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg"
+_SHEET_SAV      = "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A"
 WHATSAPP_TOKEN    = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRiTle2XGIBJZCUqVydvSfMGkemT2DHnB173InB8vDQd8uaQKAcG0aynmUZBIVZC0tFESZAH8Q04VocZB9EmWb8hp8vptWHfXHVnTmrdj0ORm7ZAlMR11CyVVJhtOLXPfqbQhUgOw53XkEgaTDzceR6nlmH7IUoKhuZBEWXnHDUCwrSIXuAPHTpZAxEsXRmGIdZBmosiO0riAGyMfBXzFwJIrQQffjpqzPaLXbDADdbT2OsgoqZBrQZCk2v4AoiPG1RC2ZCtIwP1UDEGz")
 PHONE_NUMBER_ID   = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN      = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
@@ -26,9 +30,9 @@ GOOGLE_CREDS_JSON     = os.environ.get("GOOGLE_CREDS_JSON", "")
 # GOOGLE SHEETS — IDs lus dynamiquement à chaque appel
 # ============================================================
 def get_sheet_config(type_lead):
-    ventes   = os.environ.get("GOOGLE_SHEET_VENTES", "")
-    factures = os.environ.get("GOOGLE_SHEET_FACTURES", "")
-    sav      = os.environ.get("GOOGLE_SHEET_SAV", "")
+    ventes   = os.environ.get("GOOGLE_SHEET_VENTES", _SHEET_VENTES)
+    factures = os.environ.get("GOOGLE_SHEET_FACTURES", _SHEET_FACTURES)
+    sav      = os.environ.get("GOOGLE_SHEET_SAV", _SHEET_SAV)
     mapping = {
         "vn":                  (ventes,   "VN_Leads"),
         "vo":                  (ventes,   "VO_Leads"),
