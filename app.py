@@ -12,32 +12,36 @@ app = Flask(__name__)
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRsiX2xJCM2rrKl1jTf1sZCxzqCReDUQGgeZC20IW92mlY0rwvwi3FeiY63ZCxvVMkJoBEZC8VeCEi9AjpgrSmhC2zdt2XGoxVc8fqQR287x2LEyfxluplZC3sulhLj2vFRAILowpbu9SmkSjfftzrOjZCRcfNZB4R7TklXZCqimK9s4XMMM4Vm4hpxF5hJcSuBnKLGS2vszKFy5FtrPAM7ON9uCZAAinfB9rmS8pIdfZCnp42qXcXIyUYm9CQUQvvcyTg2eTnTuwkl")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
-GOOGLE_SHEET_VENTES   = os.environ.get("GOOGLE_SHEET_VENTES", "104zrDmipMrXOzbXajmd9I6hf8WHVeogC8LU0GFXNk1I")
-GOOGLE_SHEET_FACTURES = os.environ.get("GOOGLE_SHEET_FACTURES", "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg")
-GOOGLE_SHEET_SAV      = os.environ.get("GOOGLE_SHEET_SAV", "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A")
-GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
+GOOGLE_SHEET_VENTES   = os.environ.get("GOOGLE_SHEET_VENTES", "")
+GOOGLE_SHEET_FACTURES = os.environ.get("GOOGLE_SHEET_FACTURES", "")
+GOOGLE_SHEET_SAV      = os.environ.get("GOOGLE_SHEET_SAV", "")
+GOOGLE_CREDS_JSON     = os.environ.get("GOOGLE_CREDS_JSON", "")
 
 # ============================================================
 # GOOGLE SHEETS — MAPPING ONGLETS
+# BUG FIX 1 : utilise sheet_id dynamique au lieu de GOOGLE_SHEET_ID fixe
 # ============================================================
-SHEET_MAP = {
-    "VN":                  (GOOGLE_SHEET_VENTES,   "VN_Leads"),
-    "VO":                  (GOOGLE_SHEET_VENTES,   "VO_Leads"),
-    "essai":               (GOOGLE_SHEET_VENTES,   "Essais_VN"),
-    "facture_vente":       (GOOGLE_SHEET_FACTURES, "Factures_Vente"),
-    "facture_mecanique":   (GOOGLE_SHEET_FACTURES, "Factures_Mecanique"),
-    "facture_carrosserie": (GOOGLE_SHEET_FACTURES, "Factures_Carrosserie"),
-    "facture_pieces":      (GOOGLE_SHEET_FACTURES, "Factures_Pieces"),
-    "sav_atelier":         (GOOGLE_SHEET_SAV,      "SAV_Atelier"),
-    "reclamation":         (GOOGLE_SHEET_SAV,      "Reclamations"),
-    "mainlevee":           (GOOGLE_SHEET_SAV,      "Mainlevee"),
-    "rdi":                 (GOOGLE_SHEET_SAV,      "RDI_Immatriculation"),
-}
+def get_sheet_config(type_lead):
+    mapping = {
+        "vn":                  (GOOGLE_SHEET_VENTES,   "VN_Leads"),
+        "vo":                  (GOOGLE_SHEET_VENTES,   "VO_Leads"),
+        "essai":               (GOOGLE_SHEET_VENTES,   "Essais_VN"),
+        "facture_vente":       (GOOGLE_SHEET_FACTURES, "Factures_Vente"),
+        "facture_mecanique":   (GOOGLE_SHEET_FACTURES, "Factures_Mecanique"),
+        "facture_carrosserie": (GOOGLE_SHEET_FACTURES, "Factures_Carrosserie"),
+        "facture_pieces":      (GOOGLE_SHEET_FACTURES, "Factures_Pieces"),
+        "sav_atelier":         (GOOGLE_SHEET_SAV,      "SAV_Atelier"),
+        "reclamation":         (GOOGLE_SHEET_SAV,      "Reclamations"),
+        "mainlevee":           (GOOGLE_SHEET_SAV,      "Mainlevee"),
+        "rdi":                 (GOOGLE_SHEET_SAV,      "RDI_Immatriculation"),
+    }
+    return mapping.get(type_lead.lower(), (GOOGLE_SHEET_VENTES, "VN_Leads"))
+
 
 def get_sheets_service():
     try:
@@ -46,10 +50,12 @@ def get_sheets_service():
         creds_dict = json.loads(GOOGLE_CREDS_JSON)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-        return build("s", "v4", credentials=creds)
+        # BUG FIX 2 : "sheets" au lieu de "s"
+        return build("sheets", "v4", credentials=creds)
     except Exception as e:
         print(f"[SHEETS] Erreur connexion: {e}")
         return None
+
 
 def enregistrer_lead_sheets(telephone, langue, lead_data):
     try:
@@ -58,12 +64,17 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
             return False
 
         type_lead = lead_data.get("type", "vn")
-        sheet_id, sheet_name = SHEET_MAP.get(type_lead, (GOOGLE_SHEET_VENTES, "VN_Leads"))
+        sheet_id, sheet_name = get_sheet_config(type_lead)
+
+        if not sheet_id:
+            print(f"[SHEETS] Sheet ID manquant pour type={type_lead}")
+            return False
+
         now = datetime.now()
 
         # Chercher si le client existe deja (colonne L = index 11 = telephone WA)
         result = service.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
+            spreadsheetId=sheet_id,
             range=f"{sheet_name}!A:P"
         ).execute()
         rows = result.get("values", [])
@@ -95,7 +106,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
 
         if existing_row_index:
             service.spreadsheets().values().update(
-                spreadsheetId=GOOGLE_SHEET_ID,
+                spreadsheetId=sheet_id,
                 range=f"{sheet_name}!A{existing_row_index}:P{existing_row_index}",
                 valueInputOption="USER_ENTERED",
                 body={"values": [row]}
@@ -103,7 +114,7 @@ def enregistrer_lead_sheets(telephone, langue, lead_data):
             print(f"[SHEETS] Mis a jour {sheet_name} ligne {existing_row_index}")
         else:
             service.spreadsheets().values().append(
-                spreadsheetId=GOOGLE_SHEET_ID,
+                spreadsheetId=sheet_id,
                 range=f"{sheet_name}!A:P",
                 valueInputOption="USER_ENTERED",
                 body={"values": [row]}
@@ -132,6 +143,8 @@ REGLES ABSOLUES :
 3. Collecter les informations une par une, jamais deux questions dans le même message.
 4. Lorsqu'une information n'est pas disponible, proposer un rappel par un conseiller.
 5. Ne jamais communiquer d'informations internes ou confidentielles.
+6. INTERDIT de répéter le message de bienvenue dans une conversation déjà commencée.
+7. Pour TOUTE demande (RDI, facture, véhicule, SAV, mainlevée...) -> répondre DIRECTEMENT sans introduction ni message de bienvenue.
 
 HORAIRES :
 Lun-Ven 8h00-18h30 | Sam Renault 8h30-13h00 | Sam Dacia 8h30-15h00 | Dim fermé
@@ -158,7 +171,7 @@ Pour tout renseignement ou mise en relation avec un conseiller VO → collecter 
 
 SAV — PRISE DE RDV ATELIER :
 Formulaire officiel : https://top-auto.ma/Entretienr%C3%A9paration
-Message type : "Pour planifier votre rendez-vous atelier, nous vous invitons à compléter notre formulaire en ligne. Un conseiller vous contactera rapidement pour confirmer votre rendez-vous."
+Message type : "Pour planifier votre rendez-vous atelier, nous vous invitons à compléter notre formulaire en ligne : https://top-auto.ma/Entretienr%C3%A9paration. Un conseiller vous contactera rapidement pour confirmer votre rendez-vous."
 
 MAINLEVEE :
 Documents requis (client se présente en concession) :
@@ -167,30 +180,37 @@ Documents requis (client se présente en concession) :
 - Relevé bancaire cacheté mentionnant le dernier prélèvement RCI Finance
 - Justificatif de paiement de la valeur résiduelle (si contrat avec valeur résiduelle)
 Si client demande où payer la valeur résiduelle → RIB RCI Finance Maroc : 007 780 00000 054111 70005 29
+Collecter : prénom, nom, téléphone, chassis → type=mainlevee
 
 RDI (Récépissé de Dépôt d'Immatriculation) :
 Traité uniquement si plus de 30 jours depuis la livraison.
-Particulier → collecter : chassis, CIN, téléphone
-Société → collecter : chassis, numéro RC, téléphone
+Demander d'abord : "Votre véhicule a-t-il été livré il y a plus de 30 jours ?"
+Si oui → demander si particulier ou société.
+Particulier → collecter : chassis, CIN, téléphone → type=rdi
+Société → collecter : chassis, numéro RC, téléphone → type=rdi
 
 SUIVI TRAVAUX / COMMANDES / PIÈCES :
 Rediriger vers : 0523303194
-Message : "Pour toute information concernant l'avancement des travaux, le suivi de commande ou la réception des pièces, veuillez contacter notre service au 0523303194."
+Message : "Pour toute information concernant l'avancement des travaux, le suivi de commande ou la réception des pièces, veuillez contacter notre service au 0523303194. Un conseiller vous répondra rapidement."
 
 DEMANDES DE FACTURES :
 Identifier le type avant de collecter :
-- Facture vente VN/VO → collecter : chassis, nom titulaire, téléphone
-- Facture atelier mécanique → collecter : matricule ou chassis, nom titulaire, téléphone
-- Facture carrosserie → collecter : matricule ou chassis, nom titulaire, téléphone
-- Facture pièces de rechange → collecter : matricule ou chassis, nom titulaire, téléphone
+- Facture vente VN/VO → collecter : chassis, nom titulaire, téléphone → type=facture_vente
+- Facture atelier mécanique → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_mecanique
+- Facture carrosserie → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_carrosserie
+- Facture pièces de rechange → collecter : matricule ou chassis, nom titulaire, téléphone → type=facture_pieces
 
 ESSAI VEHICULE NEUF :
-Collecter : prénom, nom, téléphone, modèle souhaité, ville
+Collecter : prénom, nom, téléphone, modèle souhaité, ville → type=essai
 Transmettre au service commercial.
 
 RECLAMATIONS :
-Collecter : prénom, nom, téléphone, chassis (si applicable), description détaillée
-Enregistrer et transmettre immédiatement au responsable.
+Collecter : prénom, nom, téléphone, chassis (si applicable), description détaillée → type=reclamation
+Enregistrer et transmettre immédiatement au responsable. Confirmer réponse dans 48h.
+
+INFORMATIONS SUR LES VEHICULES NEUFS :
+Présenter les modèles disponibles, versions et finitions, caractéristiques principales.
+Proposer un essai ou mise en relation avec conseiller commercial → type=vn
 
 COLLECTE D'INFORMATIONS — RÈGLE STRICTE :
 Toujours une seule question par message. Dans l'ordre : prénom → nom → téléphone → autres infos selon le type de demande.
@@ -214,12 +234,10 @@ Format : TEXTE_VISIBLE_CLIENT|||TAG_INTERNE
 
 TAGS DISPONIBLES :
 |||RIEN
-|||BOUTONS_BIENVENUE
 |||LEAD:prenom=X|nom=X|tel=X|modele=X|ville=X|type=vn
 |||LEAD:prenom=X|nom=X|tel=X|modele=X|type=vo
 |||LEAD:prenom=X|nom=X|tel=X|modele=X|ville=X|type=essai
 |||LEAD:prenom=X|nom=X|tel=X|chassis=X|type_facture=vn|type=facture_vente
-|||LEAD:prenom=X|nom=X|tel=X|chassis=X|type_facture=vo|type=facture_vente
 |||LEAD:prenom=X|nom=X|tel=X|chassis=X|type_facture=mecanique|type=facture_mecanique
 |||LEAD:prenom=X|nom=X|tel=X|chassis=X|type_facture=carrosserie|type=facture_carrosserie
 |||LEAD:prenom=X|nom=X|tel=X|chassis=X|type_facture=pieces|type=facture_pieces
@@ -301,57 +319,45 @@ def envoyer_bienvenue(telephone):
         "- Les rendez-vous après-vente\n\n"
         "Comment puis-je vous aider aujourd'hui ?"
     )
-    envoyer_boutons(
-        telephone, msg,
-        [
-            {"id": "btn_vehicules", "title": "Véhicules"},
-            {"id": "btn_sav", "title": "SAV & Atelier"},
-            {"id": "btn_autre", "title": "Autre demande"}
-        ]
-    )
+    envoyer_boutons(telephone, msg, [
+        {"id": "btn_vehicules", "title": "Véhicules"},
+        {"id": "btn_sav",       "title": "SAV & Atelier"},
+        {"id": "btn_autre",     "title": "Autre demande"}
+    ])
 
 
 def envoyer_menu_vehicules(telephone):
-    envoyer_boutons(
-        telephone,
-        "Quelle gamme vous intéresse ?",
-        [
-            {"id": "btn_vn", "title": "Véhicules Neufs"},
-            {"id": "btn_vo", "title": "Véhicules Occasion"},
-            {"id": "btn_essai", "title": "Essai Gratuit"}
-        ]
-    )
+    envoyer_boutons(telephone, "Quelle gamme vous intéresse ?", [
+        {"id": "btn_vn",    "title": "Véhicules Neufs"},
+        {"id": "btn_vo",    "title": "Véhicules Occasion"},
+        {"id": "btn_essai", "title": "Essai Gratuit"}
+    ])
 
 
 def envoyer_menu_autre(telephone):
-    envoyer_boutons(
-        telephone,
-        "Quelle est votre demande ?",
-        [
-            {"id": "btn_facture", "title": "Demande Facture"},
-            {"id": "btn_mainlevee", "title": "Mainlevée"},
-            {"id": "btn_reclamation", "title": "Réclamation"}
-        ]
-    )
+    envoyer_boutons(telephone, "Quelle est votre demande ?", [
+        {"id": "btn_facture",    "title": "Demande Facture"},
+        {"id": "btn_mainlevee",  "title": "Mainlevée"},
+        {"id": "btn_reclamation","title": "Réclamation"}
+    ])
 
 
 def notifier_conseiller(telephone, nom_client, lead_data):
     type_lead = lead_data.get("type", "vn")
-    sheet_name = SHEET_MAP.get(type_lead, "VN")
+    _, sheet_name = get_sheet_config(type_lead)
     lignes = [
-        f"--- NOUVEAU LEAD : {sheet_name.upper()} ---",
+        f"--- NOUVEAU LEAD : {sheet_name} ---",
         f"WhatsApp client : {telephone}",
         f"Nom : {lead_data.get('nom', '')} {lead_data.get('prenom', '')}",
         f"Tel client : {lead_data.get('tel', 'NC')}",
     ]
-    if lead_data.get("modele"):       lignes.append(f"Modèle : {lead_data['modele']}")
-    if lead_data.get("ville"):        lignes.append(f"Ville : {lead_data['ville']}")
-    if lead_data.get("chassis"):      lignes.append(f"Châssis : {lead_data['chassis']}")
-    if lead_data.get("cin"):          lignes.append(f"CIN : {lead_data['cin']}")
-    if lead_data.get("rc"):           lignes.append(f"RC : {lead_data['rc']}")
-    if lead_data.get("type_facture"): lignes.append(f"Type facture : {lead_data['type_facture']}")
-    if lead_data.get("reclamation"):  lignes.append(f"Réclamation : {lead_data['reclamation']}")
-    if lead_data.get("description"):  lignes.append(f"Description : {lead_data['description']}")
+    for k, label in [
+        ("modele","Modèle"), ("ville","Ville"), ("chassis","Châssis"),
+        ("cin","CIN"), ("rc","RC"), ("type_facture","Type facture"),
+        ("reclamation","Réclamation"), ("description","Description")
+    ]:
+        if lead_data.get(k):
+            lignes.append(f"{label} : {lead_data[k]}")
     lignes.append(f"Statut : {'URGENT - 48h' if type_lead == 'reclamation' else 'À RAPPELER'}")
     envoyer_whatsapp(CONSEILLER_TEL, "\n".join(lignes))
 
@@ -374,7 +380,8 @@ def appeler_groq(historique, texte):
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 200, "temperature": 0.2},
+        # BUG FIX 3 : modèle plus puissant + max_tokens augmenté
+        json={"model": "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 800, "temperature": 0.2},
         timeout=30
     )
     print(f"[GROQ] Status: {resp.status_code}")
@@ -388,12 +395,10 @@ def appeler_groq_vision(image_base64, mime_type):
 Identifie : le problème visible (rayure, bosselure, voyant allumé, pneu endommagé, panne, autre).
 Donne : une description professionnelle du problème, une classification (carrosserie / mécanique / électronique / pneu / autre) et une recommandation claire (passage atelier SAV recommandé / surveillance / aucune action urgente).
 Réponds en français de manière concise et professionnelle. Termine par : Merci pour votre confiance."""
-    messages = [
-        {"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}},
-            {"type": "text", "text": prompt_vision}
-        ]}
-    ]
+    messages = [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}},
+        {"type": "text", "text": prompt_vision}
+    ]}]
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
@@ -465,18 +470,19 @@ def receive_message():
             resp_audio = requests.get(audio_url, headers=headers_wa, timeout=20)
             try:
                 files = {"file": ("audio.ogg", resp_audio.content, "audio/ogg")}
-                data_whisper = {"model": "whisper-large-v3", "language": "fr", "response_format": "text"}
                 resp_whisper = requests.post(
                     "https://api.groq.com/openai/v1/audio/transcriptions",
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-                    files=files, data=data_whisper, timeout=30
+                    files=files,
+                    data={"model": "whisper-large-v3", "language": "fr", "response_format": "text"},
+                    timeout=30
                 )
                 if resp_whisper.status_code != 200:
-                    envoyer_whatsapp(telephone, "Transcription impossible. Merci d'écrire votre demande. Merci pour votre confiance.")
+                    envoyer_whatsapp(telephone, "Transcription impossible. Merci d'écrire votre demande.")
                     return jsonify({"status": "ok"}), 200
                 texte = resp_whisper.text.strip()
                 if not texte:
-                    envoyer_whatsapp(telephone, "Je n'ai pas pu comprendre votre message vocal. Merci d'écrire votre demande.")
+                    envoyer_whatsapp(telephone, "Je n'ai pas pu comprendre le message vocal. Merci d'écrire votre demande.")
                     return jsonify({"status": "ok"}), 200
                 envoyer_whatsapp(telephone, f"J'ai bien entendu : \"{texte}\"")
             except Exception as e:
@@ -496,24 +502,20 @@ def receive_message():
             headers_wa = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
             resp_url = requests.get(f"https://graph.facebook.com/v20.0/{media_id}", headers=headers_wa, timeout=10)
             if resp_url.status_code != 200:
-                envoyer_whatsapp(telephone, "Impossible de télécharger l'image. Merci pour votre confiance.")
+                envoyer_whatsapp(telephone, "Impossible de télécharger l'image.")
                 return jsonify({"status": "ok"}), 200
             image_url = resp_url.json().get("url")
             resp_img = requests.get(image_url, headers=headers_wa, timeout=20)
             if resp_img.status_code != 200:
-                envoyer_whatsapp(telephone, "Impossible de télécharger l'image. Merci pour votre confiance.")
+                envoyer_whatsapp(telephone, "Impossible de télécharger l'image.")
                 return jsonify({"status": "ok"}), 200
             image_b64 = base64.b64encode(resp_img.content).decode("utf-8")
             analyse = appeler_groq_vision(image_b64, mime_type)
             envoyer_whatsapp(telephone, analyse)
-            envoyer_boutons(
-                telephone,
-                "Souhaitez-vous prendre rendez-vous en atelier ?",
-                [
-                    {"id": "btn_rdv_sav", "title": "Prendre RDV"},
-                    {"id": "btn_autre_question", "title": "Autre question"}
-                ]
-            )
+            envoyer_boutons(telephone, "Souhaitez-vous prendre rendez-vous en atelier ?", [
+                {"id": "btn_rdv_sav",       "title": "Prendre RDV"},
+                {"id": "btn_autre_question","title": "Autre question"}
+            ])
             return jsonify({"status": "ok"}), 200
 
         # ---- TEXTE ----
@@ -542,52 +544,45 @@ def receive_message():
             session["langue"] = "AR"
 
         texte_lower = texte.lower().strip()
-        salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir", "مرحبا", "السلام", "ahlan", "bzaf", "cava", "ça va"]
+        salutations = ["bonjour", "salam", "salut", "hi", "hello", "bonsoir",
+                       "مرحبا", "السلام", "ahlan", "bjr", "bsr", "coucou"]
 
-        # ---- GESTION BOUTONS ET SALUTATIONS ----
-        if texte_lower in salutations and not session["historique"]:
+        # BUG FIX 4 : intercepter salutations AVANT Groq pour éviter répétition bienvenue
+        mots = texte_lower.split()
+        if msg_type == "text" and len(mots) <= 2 and any(s in texte_lower for s in salutations) and not session["historique"]:
             envoyer_bienvenue(telephone)
             return jsonify({"status": "ok"}), 200
 
+        # ---- GESTION BOUTONS ----
         if msg_type == "interactive":
             button_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
 
             if button_id == "btn_vehicules":
                 envoyer_menu_vehicules(telephone)
                 return jsonify({"status": "ok"}), 200
-
             elif button_id == "btn_sav":
                 texte = "Je veux prendre un rendez-vous SAV atelier"
-
             elif button_id == "btn_autre":
                 envoyer_menu_autre(telephone)
                 return jsonify({"status": "ok"}), 200
-
             elif button_id == "btn_vn":
-                texte = "Je veux des informations sur les véhicules neufs Renault et Dacia"
-
+                texte = "Je veux des informations sur les véhicules neufs Renault et Dacia disponibles"
             elif button_id == "btn_vo":
-                texte = "Je veux des informations sur les véhicules d'occasion"
-
+                texte = "Je veux des informations sur les véhicules d'occasion disponibles"
             elif button_id == "btn_essai":
                 texte = "Je veux faire un essai de véhicule neuf"
-
             elif button_id == "btn_facture":
                 texte = "Je veux demander une facture"
-
             elif button_id == "btn_mainlevee":
-                texte = "Je veux des informations sur la mainlevée"
-
+                texte = "Je veux faire une demande de mainlevée"
             elif button_id == "btn_reclamation":
-                texte = "J'ai une réclamation à faire"
-
+                texte = "J'ai une réclamation à déposer"
             elif button_id == "btn_rdv_sav":
                 envoyer_whatsapp(telephone,
                     "Pour planifier votre rendez-vous atelier, nous vous invitons à compléter notre formulaire en ligne :\n"
                     "https://top-auto.ma/Entretienr%C3%A9paration\n\n"
                     "Un conseiller vous contactera rapidement pour confirmer votre rendez-vous. Merci pour votre confiance.")
                 return jsonify({"status": "ok"}), 200
-
             elif button_id == "btn_autre_question":
                 envoyer_whatsapp(telephone, "Je suis à votre écoute. Comment puis-je vous aider ?")
                 return jsonify({"status": "ok"}), 200
@@ -603,7 +598,7 @@ def receive_message():
         if not texte_client or len(texte_client) < 3:
             texte_client = "Désolée, une erreur est survenue. Veuillez nous contacter au 0523303194. Merci pour votre confiance."
 
-        print(f"[BOT]: {texte_client[:100]}...")
+        print(f"[BOT]: {texte_client[:120]}...")
         print(f"[TAG]: {tag}")
 
         session["historique"].append({"role": "user", "content": texte})
@@ -622,7 +617,8 @@ def receive_message():
                 enregistrer_lead_sheets(telephone, session["langue"], lead_data)
 
         if tag == "FIN":
-            del sessions[telephone]
+            if telephone in sessions:
+                del sessions[telephone]
 
         return jsonify({"status": "ok"}), 200
 
