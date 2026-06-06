@@ -13,7 +13,7 @@ app = Flask(__name__)
 # CONFIGURATION
 # ============================================================
 GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "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")
-WHATSAPP_TOKEN    = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRsiX2xJCM2rrKl1jTf1sZCxzqCReDUQGgeZC20IW92mlY0rwvwi3FeiY63ZCxvVMkJoBEZC8VeCEi9AjpgrSmhC2zdt2XGoxVc8fqQR287x2LEyfxluplZC3sulhLj2vFRAILowpbu9SmkSjfftzrOjZCRcfNZB4R7TklXZCqimK9s4XMMM4Vm4hpxF5hJcSuBnKLGS2vszKFy5FtrPAM7ON9uCZAAinfB9rmS8pIdfZCnp42qXcXIyUYm9CQUQvvcyTg2eTnTuwkl")
+WHATSAPP_TOKEN    = os.environ.get("WHATSAPP_TOKEN", "EAASp22f3wJMBRqfik0Ol9kY6NnNwq4Q5cLVNbqcoWIvvtNKujvuOq4puf7NCfTcbJeONZAgPGbLVwSR2Wgq27zdncn5UH09LDSZBojj4rR6LoxX9AhZApX8pjG7pqDhEZCRBJZCB59uTrVxSr52xrhVW4U7oQr79tLfjKliu2K3jQvbqgEyLPhnhfcz0AszZA29RDYwJHin53R1bT43IXJZApvkypw6Et4x3c6NvOaPtfOsGFTHL0ZCzBHuDrrttwKJh7XZC0o0gUHIs4oBmwaPIvwAZDZD")
 PHONE_NUMBER_ID   = os.environ.get("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN      = os.environ.get("VERIFY_TOKEN", "topauto2024secret")
 CONSEILLER_TEL    = os.environ.get("CONSEILLER_WHATSAPP", "212774057668")
