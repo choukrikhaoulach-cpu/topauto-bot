@@ -55,7 +55,28 @@ def get_sheets_service():
     except Exception as e:
         print(f"[SHEETS] Erreur connexion: {e}")
         return None
-
+        
+def verifier_statut_rdi(chassis):
+    """Cherche le chassis dans RDI_Immatriculation et retourne le statut"""
+    try:
+        service = get_sheets_service()
+        if not service or not GOOGLE_SHEET_SAV:
+            return None
+        result = service.spreadsheets().values().get(
+            spreadsheetId=GOOGLE_SHEET_SAV,
+            range="RDI_Immatriculation!A:P"
+        ).execute()
+        rows = result.get("values", [])
+        chassis_lower = chassis.lower().strip()
+        for r in rows[1:]:  # skip header
+            if len(r) > 6 and r[6].lower().strip() == chassis_lower:
+                statut = r[10] if len(r) > 10 else "En cours de traitement"
+                date_dispo = r[11] if len(r) > 11 else ""
+                return {"statut": statut, "date_dispo": date_dispo}
+        return {"statut": "NON_TROUVE", "date_dispo": ""}
+    except Exception as e:
+        print(f"[RDI] Erreur vérification: {e}")
+        return None
 
 def enregistrer_lead_sheets(telephone, langue, lead_data):
     try:
@@ -411,6 +432,28 @@ Réponds en français de manière concise et professionnelle. Termine par : Merc
     return resp.json()["choices"][0]["message"]["content"]
 
 
+def verifier_statut_rdi(chassis):
+    try:
+        service = get_sheets_service()
+        if not service or not GOOGLE_SHEET_SAV:
+            return None
+        result = service.spreadsheets().values().get(
+            spreadsheetId=GOOGLE_SHEET_SAV,
+            range="RDI_Immatriculation!A:P"
+        ).execute()
+        rows = result.get("values", [])
+        chassis_lower = chassis.lower().strip()
+        for r in rows[1:]:
+            if len(r) > 6 and r[6].lower().strip() == chassis_lower:
+                statut = r[10] if len(r) > 10 else "En cours de traitement"
+                date_dispo = r[11] if len(r) > 11 else ""
+                return {"statut": statut, "date_dispo": date_dispo}
+        return {"statut": "NON_TROUVE", "date_dispo": ""}
+    except Exception as e:
+        print(f"[RDI] Erreur verification: {e}")
+        return None
+
+
 def traiter_reponse_groq(raw):
     texte, tag = raw.strip(), "RIEN"
     if "|||" in raw:
@@ -605,8 +648,30 @@ def receive_message():
         session["historique"].append({"role": "assistant", "content": texte_client})
         if len(session["historique"]) > 20:
             session["historique"] = session["historique"][-20:]
+        
+        
+        # Vérification RDI en temps réel
+        if tag.startswith("LEAD:") and "type=rdi" in tag:
+            lead_data_rdi = extraire_lead(tag)
+            if lead_data_rdi and lead_data_rdi.get("chassis"):
+                statut_info = verifier_statut_rdi(lead_data_rdi["chassis"])
+                if statut_info and statut_info["statut"] != "NON_TROUVE":
+                    statut = statut_info["statut"]
+                    date_dispo = statut_info["date_dispo"]
+                    texte_client = f"Après vérification de votre dossier :\n\nChassis : {lead_data_rdi['chassis']}\nStatut : {statut}"
+                    if date_dispo:
+                        texte_client += f"\nDate de disponibilité : {date_dispo}"
+                    texte_client += "\n\nMerci pour votre confiance."
+                elif statut_info and statut_info["statut"] == "NON_TROUVE":
+                    texte_client = (
+                        f"Après vérification, le dossier pour le chassis {lead_data_rdi['chassis']} "
+                        "n'a pas encore été enregistré dans notre système.\n\n"
+                        "Notre équipe va vérifier et vous contactera très prochainement. Merci pour votre confiance."
+                    )
 
         envoyer_whatsapp(telephone, texte_client)
+
+        if tag.startswith("LEAD:"):
 
         if tag.startswith("LEAD:"):
             lead_data = extraire_lead(tag)
