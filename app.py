@@ -86,7 +86,7 @@ def enregistrer(tel, langue, data):
                 "",
                 "NOUVEAU",
                 "",
-                tel,
+                "",
                 langue
             ]
         else:
@@ -254,7 +254,7 @@ Quand TOUTES les infos d'un flux sont collectées :
 3. Générer tag RECAP (PAS LEAD)
 
 == FORMAT OBLIGATOIRE — chaque réponse DOIT avoir ||| ==
-[Texte]|||TAG
+[Texte]|||
 
 TAGS :
 |||RIEN
