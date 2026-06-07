@@ -15,13 +15,9 @@ PHONE_NUMBER_ID = cfg("PHONE_NUMBER_ID", "1031404513398168")
 VERIFY_TOKEN    = cfg("VERIFY_TOKEN",    "topauto2024secret")
 CONSEILLER_TEL  = cfg("CONSEILLER_WHATSAPP", "212774057668")
 
-_SH_V = "1Z4ar_AxrsV2k7uytSi-K9i2OtrCWyFtiRv0U2S-nSY0"
-_SH_F = "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg"
-_SH_S = "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A"
-
-def sh_v(): return cfg("GOOGLE_SHEET_VENTES",   _SH_V)
-def sh_f(): return cfg("GOOGLE_SHEET_FACTURES", _SH_F)
-def sh_s(): return cfg("GOOGLE_SHEET_SAV",      _SH_S)
+def sh_v(): return "104zrDmipMrXOzbXajmd9I6hf8WHVeogC8LU0GFXNk1I"
+def sh_f(): return "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg"
+def sh_s(): return "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A"
 
 SHEET_CFG = {
     "vn":                  lambda: (sh_v(), "VN_Leads"),
