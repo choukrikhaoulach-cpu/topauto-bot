@@ -287,7 +287,7 @@ def groq_chat(hist, texte):
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": "llama-3.3-70b-versatile", "messages": msgs, "max_tokens": 600, "temperature": 0.15},
+        json={"model": "llama-3.1-8b-instant", "messages": msgs, "max_tokens": 600, "temperature": 0.15},
         timeout=30)
     print(f"[GROQ] {r.status_code}")
     if r.status_code != 200:
