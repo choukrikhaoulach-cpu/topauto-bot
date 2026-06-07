@@ -102,8 +102,16 @@ def verifier_rdi(chassis):
         cl = chassis.lower().strip()
         for r in res.get("values",[])[1:]:
             if len(r)>6 and r[6].lower().strip()==cl:
-                return {"trouve":True, "statut":r[10] if len(r)>10 else "En cours",
-                        "date_dispo":r[11] if len(r)>11 else ""}
+                statut = r[10] if len(r)>10 else "En cours"
+                # date_dispo : chercher une valeur avec / ou - (format date) pas un numero de tel
+                date_dispo = ""
+                for ci in [11, 12, 13]:
+                    if len(r)>ci:
+                        v = r[ci].strip()
+                        if v and ("/" in v or "-" in v) and len(v) < 15:
+                            date_dispo = v
+                            break
+                return {"trouve":True, "statut":statut, "date_dispo":date_dispo}
         return {"trouve":False}
     except Exception as e:
         print(f"[RDI] ERR: {e}")
@@ -177,11 +185,13 @@ Collecter : prénom, nom, tel, chassis → type=mainlevee
 → type=rdi
 
 == ESSAI VN — flux STRICT (ne pas mélanger avec RDI) ==
+Flux INDEPENDANT. Ne jamais poser de questions RDI dans ce flux.
 Étape 1 : Prénom
 Étape 2 : Nom
 Étape 3 : Téléphone
-Étape 4 : Modèle
+Étape 4 : Modèle souhaité
 Étape 5 : Ville
+Quand les 5 infos sont collectées → générer OBLIGATOIREMENT RECAP avec type=essai et ville=X
 → type=essai
 
 == FACTURES ==
@@ -583,8 +593,14 @@ def receive():
                 else:
                     rep = "Votre demande a bien été enregistrée. Notre équipe vous contactera très prochainement. Merci pour votre confiance."
                 wa_text(tel, rep)
-                notifier(tel, nom, data)
-                enregistrer(tel, sess["langue"], data)
+                # RDI = verification seulement, pas d'enregistrement
+                if t != "rdi":
+                    notifier(tel, nom, data)
+                    enregistrer(tel, sess["langue"], data)
+                else:
+                    # Pour RDI: juste notifier le conseiller si dossier non trouvé
+                    if info and not info.get("trouve"):
+                        notifier(tel, nom, data)
                 sess["en_attente_confirm"] = False
                 sess["infos"] = {}
                 return jsonify({"status":"ok"}), 200
