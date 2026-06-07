@@ -70,14 +70,33 @@ def enregistrer(tel, langue, data):
         res = svc.spreadsheets().values().get(spreadsheetId=sid, range=f"{sn}!A:P").execute()
         rows = res.get("values",[])
         idx = next((i+1 for i,r in enumerate(rows) if len(r)>11 and r[11]==tel), None)
-        row = [now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
-               data.get("prenom",""), data.get("nom",""), data.get("tel",""),
-               data.get("modele", data.get("vehicule","")), data.get("chassis",""),
-               data.get("cin", data.get("rc","")), data.get("ville",""),
-               data.get("type_facture", data.get("type_doc","")),
-               data.get("description", data.get("reclamation","")),
-               tel, langue, t, "WhatsApp Bot", "NOUVEAU"]
-        if idx:
+        if t == "essai":
+            row = [
+                now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
+                data.get("prenom",""), data.get("nom",""),
+                data.get("tel",""), data.get("modele",""),
+                "",  # Marque (vide, sera déduite du modèle)
+                data.get("ville",""),
+                "",  # Date RDV essai
+                "NOUVEAU",  # Statut
+                "",  # Résultat essai
+                telephone,  # Conseiller (numéro WA client)
+                langue  # Notes
+            ]
+        else:
+            row = [
+                now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
+                data.get("prenom",""), data.get("nom",""),
+                data.get("tel",""),
+                data.get("modele", data.get("vehicule","")),
+                data.get("chassis",""),
+                data.get("cin", data.get("rc","")),
+                data.get("ville",""),
+                data.get("type_facture", data.get("type_doc","")),
+                data.get("description", data.get("reclamation","")),
+                telephone, langue, t, "WhatsApp Bot", "NOUVEAU"
+            ]
+            if idx:
             svc.spreadsheets().values().update(
                 spreadsheetId=sid, range=f"{sn}!A{idx}:P{idx}",
                 valueInputOption="USER_ENTERED", body={"values":[row]}).execute()
