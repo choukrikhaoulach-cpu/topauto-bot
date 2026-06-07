@@ -39,6 +39,9 @@ SHEET_CFG = {
 
 def get_sheet(t):
     sid, sn = SHEET_CFG.get(t.lower(), lambda: (sh_v(), "VN_Leads"))()
+    print(f"[DEBUG] GOOGLE_SHEET_VENTES env = '{os.environ.get('GOOGLE_SHEET_VENTES', 'NON_DEFINI')}'")
+    print(f"[DEBUG] sh_v() = '{sh_v()}'")
+    print(f"[DEBUG] sid = '{sid}'")
     print(f"[SHEETS] type={t} sheet={'OK' if sid else 'VIDE'} onglet={sn}")
     return sid, sn
 
