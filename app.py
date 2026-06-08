@@ -88,20 +88,15 @@ def enregistrer(tel, langue, data):
             ]
         else:
             row = [
-                now.strftime("%Y%m%d%H%M%S"),   # A - ID
-                now.strftime("%d/%m/%Y %H:%M"),   # B - Date demande
-                data.get("prenom",""),            # C - Prénom
-                data.get("nom",""),               # D - Nom
-                data.get("tel",""),               # E - Téléphone
-                data.get("chassis",""),           # F - N° Châssis/Matricule
-                data.get("type_facture",""),      # G - Type facture
-                data.get("description", data.get("reclamation","")),  # H - Motif
-                "NOUVEAU",                               # I - Statut envoi
-                "",                               # J - Date envoi
-                "WhatsApp Bot",                               # K - Agent traitant
-                tel,                              # L - Notes (WA)
-                langue,                           # M
-                t                            # N                                     
+                now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
+                data.get("prenom",""), data.get("nom",""), data.get("tel",""),
+                data.get("modele", data.get("vehicule","")),
+                data.get("chassis",""),
+                data.get("cin", data.get("rc","")),
+                data.get("ville",""),
+                data.get("type_facture",""),
+                data.get("description", data.get("reclamation","")),
+                tel, langue, t, "WhatsApp Bot", "NOUVEAU"
             ]
 
         if idx:
@@ -293,10 +288,7 @@ def detecter_intent_direct(texte):
     tl = texte.lower()
     vehicule_ctx = any(w in tl for w in [
         "voiture","véhicule","vehicule","modèle","modele",
-        "dacia","renault","suv","berline","familiale","citadine","break",
-        "duster","clio","captur","sandero","logan","jogger","bigster",
-        "kardian","arkana","austral","spring","megane","express","trafic","master"
-    ])
+        "dacia","renault","suv","berline","familiale","citadine","break"])
     for kw in PRIX_KEYWORDS:
         if kw in tl and not vehicule_ctx:
             return "PRIX"
@@ -690,6 +682,10 @@ def traiter_flow(sess, tel, nom, texte):
     # SAV
     elif flow == "sav":
         if step == 1:
+            if any(w in tl.lower() for w in ["non","no","la","pas besoin","non merci","bghit la","pas"]):
+                reset_flow(sess)
+                lien = "https://top-auto.ma/Entretienr%C3%A9paration"
+                return f"Tres bien. Pour votre RDV atelier : {lien}\n\nMerci pour votre confiance.", True
             infos["prenom"] = nettoyer(tl); sess["step"] = 2
             return "Votre nom ?", False
         elif step == 2:
@@ -713,6 +709,9 @@ def traiter_flow(sess, tel, nom, texte):
     # VN
     elif flow == "vn":
         if step == 1:
+            if any(w in tl.lower() for w in ["non","no","la","pas besoin","non merci","bghit la","pas"]):
+                reset_flow(sess)
+                return "Tres bien. N'hesitez pas a nous contacter si vous avez besoin d'aide. Merci pour votre confiance.", True
             infos["prenom"] = nettoyer(tl); sess["step"] = 2
             return "Votre numero de telephone ?", False
         elif step == 2:
@@ -727,6 +726,9 @@ def traiter_flow(sess, tel, nom, texte):
     # VO
     elif flow == "vo":
         if step == 1:
+            if any(w in tl.lower() for w in ["non","no","la","pas besoin","non merci","bghit la","pas"]):
+                reset_flow(sess)
+                return "Tres bien. Consultez notre stock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.", True
             infos["prenom"] = nettoyer(tl); sess["step"] = 2
             return "Votre numero de telephone ?", False
         elif step == 2:
@@ -958,10 +960,8 @@ def receive():
         # DETECTION DIRECTE
         intent = detecter_intent_direct(texte)
         if intent == "PRIX":
-            wa_text(tel, "Pour le meilleur tarif personnalise et verifier la disponibilite, notre equipe commerciale vous contactera tres prochainement.\n\nSi vous souhaitez etre rappele, tapez votre prenom. Merci pour votre confiance.")
-            reset_flow(sess)
-            sess["flow"] = "vn"
-            sess["step"] = 1
+            wa_text(tel, "Pour le meilleur tarif personnalise et verifier la disponibilite, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom et telephone ?")
+            reset_flow(sess); sess["flow"] = "vn"; sess["step"] = 1
             return jsonify({"status":"ok"}), 200
         if intent == "FAQ_HORAIRE":
             wa_text(tel, "Horaires d'ouverture :\n\n• Lundi - Vendredi : 8h00 - 18h30\n• Samedi : 8h30 - 15h00\n• Dimanche : Ferme\n\nMerci pour votre confiance.")
