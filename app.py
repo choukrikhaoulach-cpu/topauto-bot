@@ -319,7 +319,7 @@ PRIX_KEYWORDS = ["prix", "tarif", "combien", "coûte", "cout", "coute",
 
 FAQ_KEYWORDS = {
     "horaire": ["horaire", "heure", "ouvert", "fermé", "ferme", "ouverture"],
-    "adresse": ["adresse", "localisation", "où", "ou", "situé", "situe", "plan", "gps", "maps", "carte"],
+    "adresse": ["adresse", "localisation", "où êtes", "ou etes", "situé", "situe", "comment venir", "plan", "gps", "maps", "itinéraire"],
     "telephone": ["téléphone", "telephone", "numéro", "numero", "appeler", "joindre", "contact"],
     "electrique": ["électrique", "electrique", "ev", "zev", "batterie", "recharge", "autonomie", "spring", "mégane e-tech", "r5"],
     "suv": ["suv", "tout-terrain", "4x4", "duster", "bigster", "captur", "kardian", "arkana", "austral"],
