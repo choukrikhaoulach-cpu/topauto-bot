@@ -329,9 +329,12 @@ FAQ_KEYWORDS = {
 
 def detecter_intent_direct(texte):
     tl = texte.lower()
+    # Ne pas intercepter si c'est une question sur les véhicules
+    vehicule_ctx = any(w in tl for w in ["voiture","véhicule","vehicule","modèle","modele","dacia","renault","suv","berline","familiale"])
     for kw in PRIX_KEYWORDS:
-        if kw in tl:
+        if kw in tl and not vehicule_ctx:
             return "PRIX"
+    # ...reste inchangé
     if any(w in tl for w in FAQ_KEYWORDS["horaire"]):
         return "FAQ_HORAIRE"
     if any(w in tl for w in FAQ_KEYWORDS["adresse"]):
@@ -1245,7 +1248,11 @@ def receive():
             sess["flow"] = "vo"
             sess["step"] = 1
             return jsonify({"status":"ok"}), 200
-
+            # Si texte court (prénom probable) et pas de flow actif
+    if not sess.get("flow") and len(tl.split()) <= 2 and tl.isalpha():
+        wa_text(tel, "Comment puis-je vous aider ? Choisissez parmi nos services :")
+        wa_bienvenue(tel)
+        return jsonify({"status":"ok"}), 200
         # ---- APPEL GROQ pour questions générales ----
         try:
             rep = groq_general(sess["hist"], texte)
