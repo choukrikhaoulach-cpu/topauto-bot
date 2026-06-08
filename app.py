@@ -1033,13 +1033,13 @@ def receive():
             print(f"[GROQ ERR] {e}")
             rep = "Une erreur technique est survenue. Contactez-nous au 0523303194. Merci pour votre confiance."
 
-        sess["hist"].append({"role":"user","content":texte})
-        sess["hist"].append({"role":"assistant","content":rep})
-        if len(sess["hist"]) > 10:
-            sess["hist"] = sess["hist"][-10:]
-
-        # Si Groq suggere un rappel conseiller → demarrer flux vn pour collecter prenom/tel
-        if any(w in rep.lower() for w in ["tapez votre prenom","souhaitez-vous etre rappele"]) and not sess.get("flow"):
+        # Si la question porte sur un vehicule → proposer mise en relation conseiller
+        vehicule_mentionne = any(w in tl for w in [
+            "duster","clio","captur","sandero","logan","jogger","bigster","kardian",
+            "arkana","austral","spring","megane","express","trafic","master",
+            "dacia","renault","vehicule","voiture","modele","suv","berline"])
+        if vehicule_mentionne and not sess.get("flow"):
+            rep += "\n\nSouhaitez-vous etre mis en relation avec un conseiller pour plus d'informations ou un tarif personnalise ? Si oui, tapez votre prenom."
             sess["flow"] = "vn"
             sess["step"] = 1
 
