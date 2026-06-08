@@ -984,7 +984,7 @@ def receive():
             reset_flow(sess); sess["flow"] = "essai"; sess["step"] = 1
             wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
 
-        if any(w in tl for w in ["rdi","recepisse","récépissé","immatriculation"]):
+        if any(w == "rdi" for w in tl.split()) or any(w in tl for w in ["recepisse","récépissé","recepisse de depot","depot immatriculation"]):
             reset_flow(sess); sess["flow"] = "rdi"; sess["step"] = 1
             wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
             return jsonify({"status":"ok"}), 200
