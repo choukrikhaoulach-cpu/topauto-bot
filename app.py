@@ -719,7 +719,7 @@ def traiter_flow(sess, tel, nom, texte):
             _tll = tl.lower().strip().split()
             if any(w in _tll for w in ["non","no","la","pas"]) or any(w in tl.lower() for w in ["pas besoin","non merci","bghit la"]):
                 reset_flow(sess)
-                return "Tres bien. N'hesitez pas a nous contacter si vous avez besoin d'aide. Merci pour votre confiance.", True
+                return "Tres bien. Vous pouvez aussi nous contacter directement au 0523303194 ou visiter notre concession. Merci pour votre confiance.", True
             infos["prenom"] = nettoyer(tl); sess["step"] = 2
             return "Votre numero de telephone ?", False
         elif step == 2:
@@ -991,7 +991,15 @@ def receive():
             wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
 
         if any(w in tl for w in ["moins cher","plus economique","accessible","abordable","pas cher","budget"]):
-            wa_text(tel, "Pour vous communiquer nos tarifs personnalises et verifier les disponibilites, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom ?")
+            wa_text(tel,
+                    "Nos modeles les plus accessibles sont :\n\n"
+                    "• Dacia Spring — citadine electrique\n"
+                    "• Dacia Sandero Streetway — citadine essence\n"
+                    "• Dacia Logan — berline familiale\n"
+                    "• Renault Express — berline economique\n\n"
+                    "Pour connaitre les tarifs exacts et la disponibilite, "
+                    "notre conseiller vous donnera le meilleur prix personnalise.\n\n"
+                    "Souhaitez-vous etre rappele ? (tapez votre prenom)")
             reset_flow(sess); sess["flow"] = "vn"; sess["step"] = 1
             return jsonify({"status":"ok"}), 200
     
