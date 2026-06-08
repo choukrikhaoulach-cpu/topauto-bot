@@ -368,7 +368,11 @@ def groq_whisper(audio_bytes):
 def wa_token(): return cfg("WHATSAPP_TOKEN")
 def wa_pid():   return cfg("PHONE_NUMBER_ID", PHONE_NUMBER_ID)
 def wa_cons():  return cfg("CONSEILLER_WHATSAPP", CONSEILLER_TEL)
-
+# Si réponse contient une promesse de rappel sans flux actif → démarrer flux vn
+if any(w in rep.lower() for w in ["conseiller vous contactera","tapez votre prenom","souhaitez-vous etre rappele"]):
+    if not sess.get("flow"):
+        sess["flow"] = "vn"
+        sess["step"] = 1
 def wa_text(tel, msg):
     r = requests.post(
         f"https://graph.facebook.com/v20.0/{wa_pid()}/messages",
