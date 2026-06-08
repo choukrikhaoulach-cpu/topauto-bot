@@ -96,14 +96,12 @@ def enregistrer(tel, langue, data):
                 data.get("chassis",""),           # F - N° Châssis/Matricule
                 data.get("type_facture",""),      # G - Type facture
                 data.get("description", data.get("reclamation","")),  # H - Motif
-                "",                               # I - Statut envoi
+                "NOUVEAU",                               # I - Statut envoi
                 "",                               # J - Date envoi
-                "",                               # K - Agent traitant
+                "WhatsApp Bot",                               # K - Agent traitant
                 tel,                              # L - Notes (WA)
                 langue,                           # M
-                t,                                # N
-                "WhatsApp Bot",                   # O
-                "NOUVEAU"                         # P
+                t                            # N                                     
             ]
 
         if idx:
