@@ -88,15 +88,21 @@ def enregistrer(tel, langue, data):
             ]
         else:
             row = [
-                now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
-                data.get("prenom",""), data.get("nom",""), data.get("tel",""),
-                data.get("modele", data.get("vehicule","")),
-                data.get("chassis",""),
-                data.get("cin", data.get("rc","")),
-                data.get("ville",""),
-                data.get("type_facture",""),
-                data.get("description", data.get("reclamation","")),
-                tel, langue, t, "WhatsApp Bot", "NOUVEAU"
+                now.strftime("%Y%m%d%H%M%S"),  # A - ID
+                now.strftime("%d/%m/%Y %H:%M"), # B - Date
+                data.get("prenom",""),           # C - Prénom
+                data.get("nom",""),              # D - Nom
+                data.get("tel",""),              # E - Téléphone
+                "",                              # F - Email
+                data.get("modele",""),           # G - Modèle souhaité
+                "",                              # H - Marque
+                "",                              # I - Version/Finition
+                data.get("ville",""),            # J - Ville
+                data.get("type_facture", data.get("description", data.get("reclamation",""))),  # K - Type demande
+                "WhatsApp Bot",                  # L - Source
+                "NOUVEAU",                       # M - Statut
+                tel,                             # N - Conseiller assigné (WA client)
+                langue                           # O - Notes
             ]
 
         if idx:
