@@ -990,11 +990,11 @@ def receive():
             reset_flow(sess); sess["flow"] = "essai"; sess["step"] = 1
             wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
 
-        if any(w == "rdi" for w in tl.split()) or any(w in tl for w in ["recepisse","récépissé","recepisse de depot","depot immatriculation"]):
-            reset_flow(sess); sess["flow"] = "rdi"; sess["step"] = 1
-            wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
+        if any(w in tl for w in ["moins cher","plus economique","accessible","abordable","pas cher","budget"]):
+            wa_text(tel, "Pour vous communiquer nos tarifs personnalises et verifier les disponibilites, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom ?")
+            reset_flow(sess); sess["flow"] = "vn"; sess["step"] = 1
             return jsonify({"status":"ok"}), 200
-
+    
         if any(w in tl for w in ["facture","reçu","recu"]):
             reset_flow(sess); sess["flow"] = "facture"; sess["step"] = 1
             wa_text(tel, "Quel type de facture ?\n\n1. Achat vehicule (VN/VO)\n2. Atelier mecanique\n3. Carrosserie\n4. Pieces de rechange")
