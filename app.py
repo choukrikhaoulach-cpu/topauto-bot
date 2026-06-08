@@ -308,16 +308,14 @@ def detecter_intent_direct(texte):
 SYSTEM_PROMPT_GENERAL = """Tu es l'Assistant Virtuel de TopAuto Mohammedia, concessionnaire agréé Renault et Dacia.
 
 REGLES ABSOLUES :
-1. JAMAIS de prix, tarifs, mensualités.
-2. Si quelqu'un demande un prix OU veut être mis en relation avec un conseiller, terminer par numero de conseiller 07740576678 ou : "Souhaitez-vous etre rappele par un conseiller ? Si oui, tapez votre prenom."
-3. Ne jamais dire "notre conseiller vous contactera" sans avoir collecte le prenom et telephone du client.
-4. Répondre DIRECTEMENT, sans introduction
-5. Aucun emoji dans le texte
-6. Terminer par : Merci pour votre confiance.
-7. Répondre dans la langue du client (FR / AR / Darija)
-8. Pour les véhicules : donner des infos techniques détaillées (moteurs, finitions, équipements, dimensions)
-9. Pour voiture familiale : recommander Logan, Jogger, Mégane Sedan, Duster
-10. Pour SUV : mentionner Duster, Bigster, Captur, Kardian, Arkana, Austral avec leurs caractéristiques
+1. JAMAIS de prix, tarifs, mensualités. Si on te demande un prix, réponds : "Pour le meilleur tarif personnalisé, notre conseiller vous contactera très prochainement."
+2. Répondre DIRECTEMENT, sans introduction
+3. Aucun emoji dans le texte
+4. Terminer par : Merci pour votre confiance.
+5. Répondre dans la langue du client (FR / AR / Darija)
+6. Pour les véhicules : donner des infos techniques détaillées (moteurs, finitions, équipements, dimensions)
+7. Pour voiture familiale : recommander Logan, Jogger, Mégane Sedan, Duster
+8. Pour SUV : mentionner Duster, Bigster, Captur, Kardian, Arkana, Austral avec leurs caractéristiques
 
 CATALOGUE :""" + CATALOGUE + """
 ETABLISSEMENT :""" + ETABLISSEMENT
@@ -368,11 +366,7 @@ def groq_whisper(audio_bytes):
 def wa_token(): return cfg("WHATSAPP_TOKEN")
 def wa_pid():   return cfg("PHONE_NUMBER_ID", PHONE_NUMBER_ID)
 def wa_cons():  return cfg("CONSEILLER_WHATSAPP", CONSEILLER_TEL)
-# Si réponse contient une promesse de rappel sans flux actif → démarrer flux vn
-if any(w in rep.lower() for w in ["conseiller vous contactera","tapez votre prenom","souhaitez-vous etre rappele"]):
-    if not sess.get("flow"):
-        sess["flow"] = "vn"
-        sess["step"] = 1
+
 def wa_text(tel, msg):
     r = requests.post(
         f"https://graph.facebook.com/v20.0/{wa_pid()}/messages",
@@ -987,7 +981,7 @@ def receive():
             reset_flow(sess); sess["flow"] = "essai"; sess["step"] = 1
             wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
 
-        if any(w == "rdi" for w in tl.split()) or any(w in tl for w in ["recepisse","récépissé","immatriculation","depot immatriculation"]):
+        if any(w in tl for w in ["rdi","recepisse","récépissé","immatriculation"]):
             reset_flow(sess); sess["flow"] = "rdi"; sess["step"] = 1
             wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
             return jsonify({"status":"ok"}), 200
@@ -1043,6 +1037,12 @@ def receive():
         sess["hist"].append({"role":"assistant","content":rep})
         if len(sess["hist"]) > 10:
             sess["hist"] = sess["hist"][-10:]
+
+        # Si Groq suggere un rappel conseiller → demarrer flux vn pour collecter prenom/tel
+        if any(w in rep.lower() for w in ["tapez votre prenom","souhaitez-vous etre rappele"]) and not sess.get("flow"):
+            sess["flow"] = "vn"
+            sess["step"] = 1
+
         wa_text(tel, rep)
         return jsonify({"status":"ok"}), 200
 
