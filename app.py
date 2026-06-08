@@ -145,7 +145,7 @@ def verifier_rdi(chassis):
 # ============================================================
 sessions = {}
 SESSION_TIMEOUT = 1800  # 30 min
-
+processed_ids = set()
 def get_sess(tel):
     now = time.time()
     if tel in sessions and now - sessions[tel].get("last", 0) > SESSION_TIMEOUT:
@@ -963,6 +963,16 @@ def receive():
         body  = request.get_json()
         value = body.get("entry",[{}])[0].get("changes",[{}])[0].get("value",{})
         msgs  = value.get("messages",[])
+        if not msgs:
+            return jsonify({"status":"ok"}), 200
+        msg_id = msgs[0].get("id","")
+        if msg_id and msg_id in processed_ids:
+            print(f"[DUP] Message déjà traité: {msg_id}")
+            return jsonify({"status":"ok"}), 200
+        if msg_id:
+            processed_ids.add(msg_id)
+            if len(processed_ids) > 500:
+                processed_ids.clear()
         if not msgs:
             return jsonify({"status":"ok"}), 200
 
