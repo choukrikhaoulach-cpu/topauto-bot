@@ -288,7 +288,10 @@ def detecter_intent_direct(texte):
     tl = texte.lower()
     vehicule_ctx = any(w in tl for w in [
         "voiture","véhicule","vehicule","modèle","modele",
-        "dacia","renault","suv","berline","familiale","citadine","break"])
+        "dacia","renault","suv","berline","familiale","citadine","break",
+        "duster","clio","captur","sandero","logan","jogger","bigster",
+        "kardian","arkana","austral","spring","megane","express","trafic","master"
+    ])
     for kw in PRIX_KEYWORDS:
         if kw in tl and not vehicule_ctx:
             return "PRIX"
@@ -950,8 +953,10 @@ def receive():
         # DETECTION DIRECTE
         intent = detecter_intent_direct(texte)
         if intent == "PRIX":
-            wa_text(tel, "Pour le meilleur tarif personnalise et verifier la disponibilite, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom et telephone ?")
-            reset_flow(sess); sess["flow"] = "vn"; sess["step"] = 1
+            wa_text(tel, "Pour le meilleur tarif personnalise et verifier la disponibilite, notre equipe commerciale vous contactera tres prochainement.\n\nSi vous souhaitez etre rappele, tapez votre prenom. Merci pour votre confiance.")
+            reset_flow(sess)
+            sess["flow"] = "vn"
+            sess["step"] = 1
             return jsonify({"status":"ok"}), 200
         if intent == "FAQ_HORAIRE":
             wa_text(tel, "Horaires d'ouverture :\n\n• Lundi - Vendredi : 8h00 - 18h30\n• Samedi : 8h30 - 15h00\n• Dimanche : Ferme\n\nMerci pour votre confiance.")
