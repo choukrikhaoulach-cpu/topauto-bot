@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-TopAuto Mohammedia — WhatsApp Bot
+TopAuto Mohammedia — WhatsApp Bot v3.0
 Architecture : Flask + Machines à états + Groq LLM + Google Sheets
+Cahier des charges : PFE Khaoula Choukri
 """
 import os, re, json, base64, requests, time
 from datetime import datetime
@@ -41,7 +42,7 @@ def get_sheet(t):
     fn = SHEET_MAP.get(t.lower())
     if fn:
         sid, sn = fn()
-        print(f"[FLOW] sheet={sn} id={'OK' if sid else 'VIDE'}")
+        print(f"[SHEET] {sn} id={'OK' if sid else 'VIDE'}")
         return sid, sn
     return sh_v(), "VN_Leads"
 
@@ -60,7 +61,7 @@ def gsheets():
             json.loads(cj), scopes=["https://www.googleapis.com/auth/spreadsheets"])
         return build("sheets", "v4", credentials=creds)
     except Exception as e:
-        print(f"[SHEETS] ERR service: {e}")
+        print(f"[SHEETS] ERR: {e}")
         return None
 
 def enregistrer(tel, langue, data):
@@ -71,15 +72,15 @@ def enregistrer(tel, langue, data):
         t = data.get("type", "vn").lower()
         sid, sn = get_sheet(t)
         if not sid:
-            print(f"[SHEETS] sheet ID vide type={t}")
+            print(f"[SHEETS] ID vide type={t}")
             return False
         now = datetime.now()
-        res = svc.spreadsheets().values().get(
-            spreadsheetId=sid, range=f"{sn}!A:P").execute()
+        res = svc.spreadsheets().values().get(spreadsheetId=sid, range=f"{sn}!A:N").execute()
         rows = res.get("values", [])
         idx = next((i+1 for i, r in enumerate(rows) if len(r) > 11 and r[11] == tel), None)
 
         if t == "essai":
+            # Schema Essais_VN: ID|Date|Prenom|Nom|Tel|Modele|Marque|Ville|DateRDV|Statut|Resultat|telWA|Langue
             row = [
                 now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
                 data.get("prenom",""), data.get("nom",""), data.get("tel",""),
@@ -87,28 +88,22 @@ def enregistrer(tel, langue, data):
                 data.get("date_essai",""), "NOUVEAU", "", tel, langue
             ]
         else:
+            # Schema générique: ID|Date|Prenom|Nom|Tel|Chassis|TypeFacture|Motif|Statut|DateEnvoi|Agent|telWA|Langue|Type
             row = [
-                now.strftime("%Y%m%d%H%M%S"),  # A - ID
-                now.strftime("%d/%m/%Y %H:%M"), # B - Date
-                data.get("prenom",""),           # C - Prénom
-                data.get("nom",""),              # D - Nom
-                data.get("tel",""),              # E - Téléphone
-                data.get("chassis",""),          # F - N° Châssis
-                data.get("type_facture",""),     # G - Type facture
-                data.get("description", data.get("reclamation","")),  # H - Motif
-                "NOUVEAU",                       # I - Statut envoi
-                "",                              # J - Date envoi
-                "WhatsApp Bot",                  # K - Agent traitant
-                tel,                             # L - WA client
-                langue,                          # M
-                t,                               # N
+                now.strftime("%Y%m%d%H%M%S"), now.strftime("%d/%m/%Y %H:%M"),
+                data.get("prenom",""), data.get("nom",""), data.get("tel",""),
+                data.get("chassis",""),
+                data.get("type_facture",""),
+                data.get("description", data.get("reclamation", data.get("modele",""))),
+                "NOUVEAU", "", "WhatsApp Bot",
+                tel, langue, t,
             ]
 
         if idx:
             svc.spreadsheets().values().update(
                 spreadsheetId=sid, range=f"{sn}!A{idx}:N{idx}",
                 valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
-            print(f"[SHEETS] MAJ {sn} ligne {idx}")
+            print(f"[SHEETS] MAJ {sn} L{idx}")
         else:
             svc.spreadsheets().values().append(
                 spreadsheetId=sid, range=f"{sn}!A:N",
@@ -125,8 +120,7 @@ def verifier_rdi(chassis):
         sid = sh_s()
         if not svc or not sid:
             return None
-        res = svc.spreadsheets().values().get(
-            spreadsheetId=sid, range="RDI_Immatriculation!A:P").execute()
+        res = svc.spreadsheets().values().get(spreadsheetId=sid, range="RDI_Immatriculation!A:P").execute()
         cl = chassis.lower().strip()
         for r in res.get("values", [])[1:]:
             if len(r) > 6 and r[6].lower().strip() == cl:
@@ -149,18 +143,14 @@ def verifier_rdi(chassis):
 # ============================================================
 sessions = {}
 processed_ids = set()
-SESSION_TIMEOUT = 1800
+SESSION_TIMEOUT = 1800  # 30 min
 
 def get_sess(tel):
     now = time.time()
     if tel in sessions and now - sessions[tel].get("last", 0) > SESSION_TIMEOUT:
         del sessions[tel]
     if tel not in sessions:
-        sessions[tel] = {
-            "hist": [], "langue": "FR",
-            "flow": None, "step": 0, "infos": {},
-            "last": now
-        }
+        sessions[tel] = {"hist": [], "langue": "FR", "flow": None, "step": 0, "infos": {}, "last": now}
     sessions[tel]["last"] = now
     return sessions[tel]
 
@@ -170,10 +160,10 @@ def reset_flow(sess):
     sess["infos"] = {}
 
 # ============================================================
-# VALIDATION
+# UTILITAIRES
 # ============================================================
-def valider_tel(tel):
-    t = tel.replace(" ","").replace("-","").replace(".","")
+def valider_tel(t):
+    t = t.replace(" ","").replace("-","").replace(".","")
     return bool(re.match(r'^(212[567]\d{8}|0[567]\d{8})$', t))
 
 def valider_chassis(ch):
@@ -183,162 +173,91 @@ def valider_cin(cin):
     return bool(re.match(r'^[A-Za-z]{1,2}[0-9]{4,8}$', cin.strip()))
 
 def nettoyer(val):
-    val = val.strip()
     val = re.sub(r'[Mm]erci pour votre confiance\.?', '', val).strip()
     val = re.sub(r'[Cc]hokran.*', '', val).strip()
     return val.strip('. \n')
 
 def is_refus(tl):
     mots = tl.lower().strip().split()
-    return (any(w in mots for w in ["non","no","la","pas"]) or
-            any(w in tl.lower() for w in ["pas besoin","non merci","bghit la"]))
+    return any(w in mots for w in ["non","no","la","pas"]) or \
+           any(w in tl.lower() for w in ["pas besoin","non merci","bghit la","no thanks"])
+
+def is_oui(tl):
+    return any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan","ouai"])
 
 # ============================================================
-# CATALOGUE & ÉTABLISSEMENT
+# CATALOGUE
 # ============================================================
-CATALOGUE = """
-GAMME DACIA — VEHICULES NEUFS
+CATALOGUE = """GAMME DACIA — VEHICULES NEUFS
 ------------------------------
-DACIA SPRING — Citadine electrique
-  Batterie 24,3 kWh | 70 ou 100 ch | Recharge AC 7kW / DC 40kW
-  V2L | Coffre 308L | Finitions : Essential / Extreme
-
-DACIA SANDERO STREETWAY 2026 — Citadine
-  Ecran 10 pouces | SCe 65ch / TCe 100ch / dCi 102ch
-  Finitions : Essential → Journey
-
-DACIA SANDERO STEPWAY — Crossover urbain
-  Garde au sol 17 cm | TCe 100ch / dCi 102ch / CVT Extreme
-  Finitions : Essential → Extreme
-
-DACIA LOGAN — Berline familiale
-  Coffre 528L | SCe 65ch / TCe 100ch / dCi 102ch
-  Finitions : Essential → Journey
-
-DACIA JOGGER — Break 5/7 places
-  Coffre 1 807L | TCe 100ch / dCi 102ch / HEV 140ch auto
-  Finitions : Essential → Extreme
-
-DACIA DUSTER 2025 — SUV 3e generation
-  Media Nav 8" | Camera recul | CarPlay | dCi 115ch / TCe 130ch
-  Finitions : Essential → Extreme
-
-DACIA BIGSTER 2025 — Grand SUV (NOUVEAU)
-  +23 cm vs Duster | Toit panoramique | dCi 115ch / HEV 155ch auto
-  Finitions : Essential → Journey
-
+Spring electrique : Batterie 24,3kWh | 70/100ch | AC 7kW / DC 40kW | Coffre 308L | Essential/Extreme
+Sandero Streetway 2026 : Ecran 10" | SCe65/TCe100/dCi102ch | Essential→Journey
+Sandero Stepway : Garde au sol 17cm | TCe100/dCi102ch/CVT | Essential→Extreme
+Logan : Coffre 528L | SCe65/TCe100/dCi102ch | Essential→Journey
+Jogger 5/7pl : Coffre 1807L | TCe100/dCi102ch/HEV140ch auto | Essential→Extreme
+Duster 2025 : Media Nav 8"| CarPlay | dCi115/TCe130ch | Essential→Extreme
+Bigster 2025 : +23cm vs Duster | Toit pano | dCi115/HEV155ch auto | Essential→Journey
 
 GAMME RENAULT VP — VEHICULES NEUFS
 ------------------------------------
-RENAULT CLIO 5 Phase 2 — Citadine
-  TCe 100ch / Blue dCi 115ch / E-Tech 145ch auto
-  Finitions : Equilibre → Esprit Alpine
+Clio 5 Ph2 : TCe100/dCi115/ETech145ch auto | Equilibre→Esprit Alpine
+Clio 6 : Design repense | TCe100/ETech145ch | Equilibre→Esprit Alpine
+Captur : OpenR Link | Google | Ecran10" | TCe100CVT/ETech145ch | Equilibre→Esprit Alpine
+R5 ETech electrique : 40kWh120ch ou 52kWh150ch | 400km | DC100kW | Evolution→Esprit Alpine
+Express : diesel 95/115ch
+Megane Sedan : Coffre 475L | dCi115ch | Equilibre→Esprit Alpine
+Megane ETech electrique : 60kWh | 450km | DC130kW | 220ch | Google | Ecran12" | Equilibre→Iconic
+Arkana : ETech145ch | 4,5L/100km | Techno/Esprit Alpine
+Austral : ETech200ch | OpenR Link | Google | 4,5L/100km | Techno/Esprit Alpine
+Kardian SOMACA : Camera360 | TCe100CVT/dCi102ch | Equilibre/Techno
 
-RENAULT CLIO 6 — Nouvelle generation
-  Design repense | TCe 100ch / E-Tech 145ch auto
-  Finitions : Equilibre → Esprit Alpine
+GAMME RENAULT VU
+-----------------
+Express Van : 800kg | 3,3m3 | dCi75ch
+Trafic : 1400kg | L1/L2 H1/H2 | dCi150ch | Combi9pl
+Master : 1700kg | 8-17m3 | dCi145/180ch"""
 
-RENAULT CAPTUR — SUV urbain
-  OpenR Link | Google | Ecran 10" | TCe 100ch CVT / E-Tech 145ch auto
-  Finitions : Equilibre → Esprit Alpine
-
-RENAULT 5 E-TECH — 100% Electrique
-  40 kWh 120ch ou 52 kWh 150ch | Autonomie 400 km | DC 100 kW
-  Finitions : Evolution → Esprit Alpine
-
-RENAULT EXPRESS — Berline economique
-  Diesel 95ch ou 115ch
-
-RENAULT MEGANE SEDAN — Berline familiale
-  Coffre 475L | Blue dCi 115ch
-  Finitions : Equilibre → Esprit Alpine
-
-RENAULT MEGANE E-TECH — Compacte electrique
-  60 kWh | 450 km WLTP | 130 kW DC | 220ch | Google | Ecran 12"
-  Finitions : Equilibre → Iconic
-
-RENAULT ARKANA — Coupe-SUV hybride
-  E-Tech 145ch | 4,5L/100km
-  Finitions : Techno / Esprit Alpine
-
-RENAULT AUSTRAL — SUV familial
-  E-Tech 200ch | OpenR Link | Google | Full digital | 4,5L/100km
-  Finitions : Techno / Esprit Alpine
-
-RENAULT KARDIAN — SUV compact (SOMACA Maroc)
-  Camera 360 | TCe 100ch CVT / Blue dCi 102ch
-  Finitions : Equilibre / Techno
-
-
-GAMME RENAULT VU — UTILITAIRES
---------------------------------
-EXPRESS VAN : 800 kg | 3,3 m3 | dCi 75ch
-TRAFIC : 1 400 kg | L1/L2 H1/H2 | dCi 150ch | Combi 9 places
-MASTER : 1 700 kg | 8 a 17 m3 | dCi 145/180ch
-"""
-
-ETABLISSEMENT = """
-TopAuto Mohammedia — Concessionnaire agree Renault & Dacia
+ETABLISSEMENT = """TopAuto Mohammedia — Concessionnaire agree Renault & Dacia
 Adresse : Q.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia
-Tel Renault : 0523303194 | Tel Dacia : 0523303195
-Email : contact@top-auto.ma
-GPS : 33.683384 N, 7.409769 W
-Maps : https://maps.google.com/?q=33.683384,-7.409769
+Tel Renault : 0523303194 | Tel Dacia : 0523303195 | Email : contact@top-auto.ma
+GPS : 33.683384 N, 7.409769 W | Maps : https://maps.google.com/?q=33.683384,-7.409769
 Horaires : Lun-Ven 8h00-18h30 | Sam 8h30-15h00 | Dim Ferme
-"""
-
-# ============================================================
-# DETECTION RAPIDE
-# ============================================================
-PRIX_KEYWORDS = ["prix", "tarif", "combien", "coute", "coûte",
-                 "remise", "promotion", "mensualite", "mensualité",
-                 "thaman", "b7al", "bchhal"]
-
-def detecter_intent_direct(texte):
-    tl = texte.lower()
-    vehicule_ctx = any(w in tl for w in [
-        "voiture","véhicule","vehicule","modèle","modele",
-        "dacia","renault","suv","berline","familiale","citadine","break"])
-    for kw in PRIX_KEYWORDS:
-        if kw in tl and not vehicule_ctx:
-            return "PRIX"
-    if any(w in tl for w in ["horaire","heure","ouvert","fermé","ferme","ouverture"]):
-        return "FAQ_HORAIRE"
-    if any(w in tl for w in ["adresse","localisation","où êtes","ou etes","situé","situe","comment venir","gps","maps","itinéraire","itineraire"]):
-        return "FAQ_ADRESSE"
-    if any(w in tl for w in ["téléphone de","telephone de","numéro de contact","numero de contact","appeler","joindre"]):
-        return "FAQ_TEL"
-    if any(w in tl for w in ["suivi","avancement travaux","suivi commande","réception pièces","reception pieces"]):
-        return "FAQ_SUIVI"
-    return None
+Facebook : @topauto | Instagram : @top_auto_mohammedia"""
 
 # ============================================================
 # GROQ
 # ============================================================
-SYSTEM_PROMPT_GENERAL = """Tu es l'Assistant Virtuel de TopAuto Mohammedia, concessionnaire agréé Renault et Dacia.
+SYSTEM_PROMPT = """Tu es l'Assistant Virtuel officiel de TopAuto Mohammedia, concessionnaire agree Renault et Dacia.
 
 REGLES ABSOLUES :
-1. JAMAIS de prix, tarifs, mensualités. Si on te demande un prix, réponds : "Pour le meilleur tarif personnalisé, notre conseiller vous contactera très prochainement."
-2. Répondre DIRECTEMENT, sans introduction
-3. Aucun emoji dans le texte
+1. JAMAIS de prix, tarifs, mensualites — orienter vers conseiller
+2. Repondre DIRECTEMENT sans introduction
+3. Aucun emoji
 4. Terminer par : Merci pour votre confiance.
-5. Répondre dans la langue du client (FR / AR / Darija)
-6. Pour les véhicules : donner des infos techniques détaillées (moteurs, finitions, équipements, dimensions)
-7. Pour voiture familiale : recommander Logan, Jogger, Mégane Sedan, Duster
-8. Pour SUV : mentionner Duster, Bigster, Captur, Kardian, Arkana, Austral avec leurs caractéristiques
-9. Si le client demande le RDI, récépissé de dépôt, immatriculation, carte grise en attente → répondre UNIQUEMENT le mot : RDI_FLOW
-10. Si le client demande un essai, test drive, conduire un vehicule → répondre UNIQUEMENT le mot : ESSAI_FLOW
+5. Repondre dans la langue du client (FR / AR / Darija)
+6. Pour vehicules : infos techniques detaillees (moteurs, finitions, equipements)
+7. Pour voiture familiale : recommander Logan, Jogger, Megane Sedan, Duster
+8. Pour SUV : Duster, Bigster, Captur, Kardian, Arkana, Austral
+9. IMPORTANT — Si le client demande RDI / recepisse / immatriculation / carte grise en attente → repondre UNIQUEMENT : ##RDI##
+10. IMPORTANT — Si le client demande essai / test drive / tester un vehicule → repondre UNIQUEMENT : ##ESSAI##
+11. IMPORTANT — Si le client demande facture / recu → repondre UNIQUEMENT : ##FACTURE##
+12. IMPORTANT — Si le client demande reclamation / plainte / probleme → repondre UNIQUEMENT : ##RECLAMATION##
+13. IMPORTANT — Si le client demande mainlevee → repondre UNIQUEMENT : ##MAINLEVEE##
+14. IMPORTANT — Si le client demande prix / tarif / combien → repondre UNIQUEMENT : ##PRIX##
 
-CATALOGUE :""" + CATALOGUE + """
-ETABLISSEMENT :""" + ETABLISSEMENT
+CATALOGUE :
+""" + CATALOGUE + """
 
-def groq_general(hist, texte):
+ETABLISSEMENT :
+""" + ETABLISSEMENT
+
+def groq_chat(hist, texte):
     key = cfg("GROQ_API_KEY")
-    msgs = [{"role": "system", "content": SYSTEM_PROMPT_GENERAL}] + hist[-8:] + [{"role": "user", "content": texte}]
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}] + hist[-6:] + [{"role": "user", "content": texte}]
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": "llama-3.3-70b-versatile", "messages": msgs, "max_tokens": 600, "temperature": 0.2},
+        json={"model": "llama-3.3-70b-versatile", "messages": msgs, "max_tokens": 600, "temperature": 0.15},
         timeout=30)
     print(f"[GROQ] {r.status_code}")
     if r.status_code != 200:
@@ -347,7 +266,7 @@ def groq_general(hist, texte):
 
 def groq_vision(b64, mime):
     key = cfg("GROQ_API_KEY")
-    prompt = "Expert automobile TopAuto. Analyse image: 1-Probleme visible 2-Classification(carrosserie/mecanique/electronique/pneu) 3-Gravite(faible/modere/urgent) 4-Recommandation. Francais concis. Termine: Merci pour votre confiance."
+    prompt = "Expert auto TopAuto Mohammedia. Analyse image: 1-Probleme visible 2-Classification(carrosserie/mecanique/electronique/pneu/autre) 3-Gravite(faible/modere/urgent) 4-Recommandation. Francais concis. Termine: Merci pour votre confiance."
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -357,15 +276,15 @@ def groq_vision(b64, mime):
                   {"type": "text", "text": prompt}]}],
               "max_tokens": 400}, timeout=30)
     if r.status_code != 200:
-        return "Impossible d'analyser. Presentez-vous en atelier. Merci pour votre confiance."
+        return "Impossible d'analyser cette image. Presentez-vous en atelier pour un diagnostic. Merci pour votre confiance."
     return r.json()["choices"][0]["message"]["content"]
 
-def groq_whisper(audio_bytes):
+def groq_whisper(audio):
     key = cfg("GROQ_API_KEY")
     r = requests.post(
         "https://api.groq.com/openai/v1/audio/transcriptions",
         headers={"Authorization": f"Bearer {key}"},
-        files={"file": ("a.ogg", audio_bytes, "audio/ogg")},
+        files={"file": ("a.ogg", audio, "audio/ogg")},
         data={"model": "whisper-large-v3", "language": "fr", "response_format": "text"},
         timeout=30)
     if r.status_code != 200 or not r.text.strip():
@@ -375,14 +294,14 @@ def groq_whisper(audio_bytes):
 # ============================================================
 # WHATSAPP
 # ============================================================
-def wa_token(): return cfg("WHATSAPP_TOKEN")
-def wa_pid():   return cfg("PHONE_NUMBER_ID", PHONE_NUMBER_ID)
-def wa_cons():  return cfg("CONSEILLER_WHATSAPP", CONSEILLER_TEL)
+def wa_tok(): return cfg("WHATSAPP_TOKEN")
+def wa_pid(): return cfg("PHONE_NUMBER_ID", PHONE_NUMBER_ID)
+def wa_con(): return cfg("CONSEILLER_WHATSAPP", CONSEILLER_TEL)
 
 def wa_text(tel, msg):
     r = requests.post(
         f"https://graph.facebook.com/v20.0/{wa_pid()}/messages",
-        headers={"Authorization": f"Bearer {wa_token()}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {wa_tok()}", "Content-Type": "application/json"},
         json={"messaging_product": "whatsapp", "to": tel, "type": "text", "text": {"body": msg}},
         timeout=10)
     print(f"[WA] text {r.status_code}")
@@ -391,7 +310,7 @@ def wa_text(tel, msg):
 def wa_btns(tel, body, btns):
     r = requests.post(
         f"https://graph.facebook.com/v20.0/{wa_pid()}/messages",
-        headers={"Authorization": f"Bearer {wa_token()}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {wa_tok()}", "Content-Type": "application/json"},
         json={"messaging_product": "whatsapp", "to": tel, "type": "interactive",
               "interactive": {"type": "button", "body": {"text": body},
                 "action": {"buttons": [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in btns[:3]]}}},
@@ -402,135 +321,136 @@ def wa_btns(tel, body, btns):
 def wa_bienvenue(tel):
     wa_btns(tel,
         "Bonjour et bienvenue chez TopAuto Mohammedia, concessionnaire agree Renault et Dacia.\n\n"
-        "Je suis l'Assistant Virtuel, disponible 24/7 pour vous accompagner concernant :\n"
-        "- Les vehicules Renault et Dacia (neufs et occasion)\n"
-        "- L'entretien et les reparations\n"
-        "- Les pieces de rechange et carrosserie\n"
-        "- Les demandes administratives\n"
-        "- Les rendez-vous apres-vente\n\n"
+        "Je suis l'Assistant Virtuel, disponible 24/7 pour vous accompagner :\n"
+        "- Vehicules Renault et Dacia (neufs et occasion)\n"
+        "- Entretien et reparations\n"
+        "- Pieces de rechange et carrosserie\n"
+        "- Demandes administratives\n"
+        "- Rendez-vous apres-vente\n\n"
         "Comment puis-je vous aider aujourd'hui ?",
-        [{"id": "btn_vehicules", "title": "Vehicules"},
-         {"id": "btn_sav", "title": "SAV & Atelier"},
-         {"id": "btn_autre", "title": "Autre demande"}])
+        [{"id":"btn_vehicules","title":"Vehicules"},
+         {"id":"btn_sav","title":"SAV & Atelier"},
+         {"id":"btn_autre","title":"Autre demande"}])
 
 def wa_menu_veh(tel):
     wa_btns(tel, "Quelle gamme vous interesse ?",
-        [{"id": "btn_vn", "title": "Vehicules Neufs"},
-         {"id": "btn_vo", "title": "Vehicules Occasion"},
-         {"id": "btn_essai", "title": "Essai Gratuit"}])
+        [{"id":"btn_vn","title":"Vehicules Neufs"},
+         {"id":"btn_vo","title":"Vehicules Occasion"},
+         {"id":"btn_essai","title":"Essai Gratuit"}])
 
 def wa_menu_autre(tel):
     wa_btns(tel, "Quelle est votre demande ?",
-        [{"id": "btn_facture", "title": "Demande Facture"},
-         {"id": "btn_mainlevee", "title": "Mainlevee"},
-         {"id": "btn_reclamation", "title": "Reclamation"}])
+        [{"id":"btn_facture","title":"Demande Facture"},
+         {"id":"btn_mainlevee","title":"Mainlevee"},
+         {"id":"btn_reclamation","title":"Reclamation"}])
 
-def notifier_conseiller(tel, nom_wa, data):
-    t = data.get("type", "vn")
+def notifier(tel, nom_wa, data):
+    t = data.get("type","vn")
     _, sn = get_sheet(t)
-    lignes = [f"--- NOUVEAU LEAD : {sn} ---", f"WA client : {tel}", f"Nom WA : {nom_wa}"]
-    for k, l in [("prenom","Prenom"),("nom","Nom"),("tel","Tel"),("modele","Modele"),
-                 ("ville","Ville"),("chassis","Chassis"),("cin","CIN"),("rc","RC"),
-                 ("type_facture","Type facture"),("reclamation","Reclamation"),
-                 ("description","Description"),("date_essai","Date essai")]:
-        if data.get(k):
-            lignes.append(f"{l} : {data[k]}")
-    lignes.append(f"Statut : {'URGENT 48h' if t == 'reclamation' else 'A RAPPELER'}")
-    wa_text(wa_cons(), "\n".join(lignes))
+    lignes = [f"--- NOUVEAU : {sn} ---", f"WA : {tel}", f"Nom WA : {nom_wa}"]
+    for k,l in [("prenom","Prenom"),("nom","Nom"),("tel","Tel"),("modele","Modele"),
+                ("ville","Ville"),("chassis","Chassis"),("cin","CIN"),("rc","RC"),
+                ("type_facture","Type facture"),("reclamation","Reclamation"),
+                ("description","Desc"),("date_essai","Date essai")]:
+        if data.get(k): lignes.append(f"{l} : {data[k]}")
+    lignes.append(f"Statut : {'URGENT 48h' if t=='reclamation' else 'A RAPPELER'}")
+    wa_text(wa_con(), "\n".join(lignes))
 
-def recap_texte(data, flow):
+def recap(data):
     t = "Recapitulatif de votre demande :\n"
-    for k, l in [("prenom","Prenom"), ("nom","Nom"), ("tel","Telephone"),
-                 ("modele","Modele souhaite"), ("ville","Ville"),
-                 ("date_essai","Date souhaitee"), ("chassis","Numero de chassis"),
-                 ("cin","CIN"), ("rc","RC societe"), ("type_facture","Type de facture"),
-                 ("reclamation","Reclamation"), ("description","Description")]:
-        v = data.get(k, "")
-        if v and v not in ["X", "", "null", "?"]:
+    for k,l in [("prenom","Prenom"),("nom","Nom"),("tel","Telephone"),
+                ("modele","Modele"),("ville","Ville"),("date_essai","Date souhaitee"),
+                ("chassis","Chassis"),("cin","CIN"),("rc","RC"),
+                ("type_facture","Type facture"),("reclamation","Reclamation")]:
+        v = data.get(k,"")
+        if v and v not in ["X","","null","?"]:
             t += f"- {l} : {v}\n"
-    t += "\nCes informations sont-elles correctes ? (Repondez Oui ou Non)"
+    t += "\nCes informations sont-elles correctes ? (Oui / Non)"
     return t
 
 # ============================================================
-# MACHINES A ETATS
+# MACHINES A ETATS — logique métier pure
 # ============================================================
+def demarrer_flux(sess, flow, question_initiale):
+    reset_flow(sess)
+    sess["flow"] = flow
+    sess["step"] = 1
+    return question_initiale
+
 def traiter_flow(sess, tel, nom, texte):
     flow = sess["flow"]
     step = sess["step"]
     infos = sess["infos"]
     tl = texte.strip()
-    print(f"[FLOW] {flow} | STEP {step} | msg={tl[:30]}")
+    print(f"[FLOW] {flow} step={step}")
 
-    # ESSAI VN
+    # ==== ESSAI VN ====
     if flow == "essai":
         if step == 1:
+            if is_refus(tl): reset_flow(sess); return "Tres bien. Merci pour votre confiance.", True
             infos["prenom"] = nettoyer(tl); sess["step"] = 2
-            return "Votre nom, s'il vous plait ?", False
+            return "Votre nom ?", False
         elif step == 2:
             infos["nom"] = nettoyer(tl); sess["step"] = 3
             return "Votre numero de telephone ?", False
         elif step == 3:
-            if not valider_tel(tl):
-                return "Numero invalide. Format valide : 0612345678 ou 212612345678.", False
+            if not valider_tel(tl): return "Numero invalide (ex: 0612345678).", False
             infos["tel"] = nettoyer(tl); sess["step"] = 4
-            return "Quel modele souhaitez-vous essayer ? (ex: Dacia Duster, Renault Clio...)", False
+            return "Quel modele souhaitez-vous essayer ?", False
         elif step == 4:
             infos["modele"] = nettoyer(tl); sess["step"] = 5
-            return "Dans quelle ville souhaitez-vous effectuer l'essai ?", False
+            return "Dans quelle ville ?", False
         elif step == 5:
             infos["ville"] = nettoyer(tl); sess["step"] = 6
-            return "Avez-vous une date souhaitee pour l'essai ? (ex: 15/06/2026 ou 'des que possible')", False
+            return "Date souhaitee pour l'essai ? (ex: 15/06/2026 ou 'des que possible')", False
         elif step == 6:
             infos["date_essai"] = nettoyer(tl) if tl.lower() not in ["non","no","la","pas"] else "Des que possible"
             sess["step"] = 7
-            return recap_texte(infos, flow), False
+            return recap(infos), False
         elif step == 7:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan"]):
-                ok = enregistrer(tel, sess["langue"], {**infos, "type": "essai"})
-                notifier_conseiller(tel, nom, {**infos, "type": "essai"})
+            if is_oui(tl):
+                ok = enregistrer(tel, sess["langue"], {**infos, "type":"essai"})
+                notifier(tel, nom, {**infos, "type":"essai"})
                 reset_flow(sess)
-                msg = "Votre demande d'essai a bien ete enregistree. Notre service commercial vous contactera tres prochainement pour confirmer la date."
-                if not ok:
-                    msg += "\n\nNote : incident technique lors de l'enregistrement. Un conseiller vous contactera."
+                msg = "Votre demande d'essai a bien ete enregistree. Notre equipe vous contactera tres prochainement pour confirmer."
+                if not ok: msg += "\n(Note: incident technique lors de l'enregistrement)"
                 return msg + "\n\nMerci pour votre confiance.", True
-            elif any(w in tl.lower() for w in ["non","no","la","modifier","changer","corriger","faux"]):
+            elif is_refus(tl):
                 sess["step"] = 8
-                return "Quelle information souhaitez-vous modifier ? (prenom / nom / telephone / modele / ville / date)", False
+                return "Quelle information modifier ? (prenom/nom/telephone/modele/ville/date)", False
             else:
-                return "Veuillez repondre par Oui ou Non.\n\n" + recap_texte(infos, flow), False
+                return "Repondez Oui ou Non.\n\n" + recap(infos), False
         elif step == 8:
             tll = tl.lower()
             if "prenom" in tll: infos.pop("prenom",None); sess["step"]=1; return "Votre prenom ?", False
             elif "nom" in tll: infos.pop("nom",None); sess["step"]=2; return "Votre nom ?", False
-            elif "telephone" in tll or "tel" in tll: infos.pop("tel",None); sess["step"]=3; return "Votre telephone ?", False
-            elif "modele" in tll or "vehicule" in tll: infos.pop("modele",None); sess["step"]=4; return "Quel modele ?", False
+            elif "tel" in tll or "telephone" in tll: infos.pop("tel",None); sess["step"]=3; return "Votre telephone ?", False
+            elif "modele" in tll: infos.pop("modele",None); sess["step"]=4; return "Quel modele ?", False
             elif "ville" in tll: infos.pop("ville",None); sess["step"]=5; return "Quelle ville ?", False
             elif "date" in tll: infos.pop("date_essai",None); sess["step"]=6; return "Quelle date ?", False
             else: return "Precisez : prenom, nom, telephone, modele, ville ou date.", False
 
-    # RDI
+    # ==== RDI ====
     elif flow == "rdi":
         if step == 1:
-            oui = any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","ouai","si"])
-            non = any(w in tl.lower() for w in ["non","no","la","pas encore","pas"])
-            if oui: sess["step"]=2; return "Etes-vous un particulier ou une societe ?", False
-            elif non:
+            if is_oui(tl): sess["step"]=2; return "Etes-vous un particulier ou une societe ?", False
+            elif is_refus(tl):
                 reset_flow(sess)
-                return "Le delai reglementaire de 30 jours n'est pas encore ecoule. Vous pourrez faire votre demande de RDI passe ce delai. Merci pour votre confiance.", True
+                return "Le delai de 30 jours n'est pas encore ecoule. Vous pourrez faire la demande RDI apres ce delai. Merci pour votre confiance.", True
             else: return "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)", False
         elif step == 2:
             if any(w in tl.lower() for w in ["particulier","prive","individuel","personne"]):
                 infos["type_client"]="particulier"; sess["step"]=3
-            elif any(w in tl.lower() for w in ["societe","entreprise","ste","rc","commerce"]):
+            elif any(w in tl.lower() for w in ["societe","entreprise","ste","commerce"]):
                 infos["type_client"]="societe"; sess["step"]=3
-            else: return "Etes-vous un particulier ou une societe ?", False
-            return "Votre prenom, s'il vous plait ?", False
+            else: return "Particulier ou societe ?", False
+            return "Votre prenom ?", False
         elif step == 3:
             infos["prenom"]=nettoyer(tl); sess["step"]=4
             return "Votre numero de chassis (VIN) ?", False
         elif step == 4:
-            ch = tl.replace(" ","")
-            if not valider_chassis(ch): return "Numero de chassis incomplet (minimum 11 caracteres).", False
+            ch=tl.replace(" ","")
+            if not valider_chassis(ch): return "Chassis incomplet (min 11 caracteres).", False
             infos["chassis"]=ch.upper(); sess["step"]=5
             return ("Votre numero RC ?" if infos.get("type_client")=="societe" else "Votre numero de CIN ?"), False
         elif step == 5:
@@ -542,39 +462,39 @@ def traiter_flow(sess, tel, nom, texte):
                 infos["cin"]=cin
             sess["step"]=6; return "Votre numero de telephone ?", False
         elif step == 6:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide (ex: 0612345678).", False
             infos["tel"]=nettoyer(tl); sess["step"]=7
-            return recap_texte(infos, flow), False
+            return recap(infos), False
         elif step == 7:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan"]):
+            if is_oui(tl):
                 info_rdi = verifier_rdi(infos.get("chassis",""))
                 if info_rdi is None:
                     rep = "Impossible d'acceder au systeme. Notre equipe vous contactera."
-                    notifier_conseiller(tel, nom, {**infos, "type":"rdi"})
+                    notifier(tel, nom, {**infos, "type":"rdi"})
                 elif info_rdi.get("trouve"):
                     statut = info_rdi.get("statut","En cours")
                     date_d = info_rdi.get("date_dispo","")
-                    rep = f"Verification dossier :\n- Chassis : {infos['chassis']}\n- Statut : {statut}"
+                    rep = f"Resultat verification :\n- Chassis : {infos['chassis']}\n- Statut : {statut}"
                     if date_d: rep += f"\n- Date disponibilite : {date_d}"
                     rep += "\n\nPour info : 0523303194."
                 else:
                     rep = f"Dossier chassis {infos['chassis']} pas encore enregistre. Notre equipe va verifier et vous contactera."
-                    notifier_conseiller(tel, nom, {**infos, "type":"rdi"})
+                    notifier(tel, nom, {**infos, "type":"rdi"})
                 reset_flow(sess)
                 return rep + "\n\nMerci pour votre confiance.", True
-            elif any(w in tl.lower() for w in ["non","no","la","modifier","changer"]):
-                sess["step"]=8; return "Quelle info modifier ? (prenom / chassis / cin / rc / telephone)", False
-            else: return "Repondez Oui ou Non.\n\n" + recap_texte(infos, flow), False
+            elif is_refus(tl):
+                sess["step"]=8; return "Quelle info modifier ? (prenom/chassis/cin/rc/telephone)", False
+            else: return "Repondez Oui ou Non.\n\n" + recap(infos), False
         elif step == 8:
             tll=tl.lower()
             if "prenom" in tll: sess["step"]=3; return "Votre prenom ?", False
-            elif "chassis" in tll or "vin" in tll: infos.pop("chassis",None); sess["step"]=4; return "Votre chassis ?", False
+            elif "chassis" in tll: infos.pop("chassis",None); sess["step"]=4; return "Votre chassis ?", False
             elif "cin" in tll: infos.pop("cin",None); sess["step"]=5; return "Votre CIN ?", False
             elif "rc" in tll: infos.pop("rc",None); sess["step"]=5; return "Votre RC ?", False
-            elif "telephone" in tll or "tel" in tll: infos.pop("tel",None); sess["step"]=6; return "Votre telephone ?", False
+            elif "tel" in tll or "telephone" in tll: infos.pop("tel",None); sess["step"]=6; return "Votre telephone ?", False
             else: return "Precisez : prenom, chassis, CIN, RC ou telephone.", False
 
-    # FACTURE — steps 1-7 corrigés
+    # ==== FACTURE ====
     elif flow == "facture":
         if step == 1:
             tll=tl.lower()
@@ -582,16 +502,16 @@ def traiter_flow(sess, tel, nom, texte):
                 infos["type_facture"]="Vente VN/VO"; infos["type"]="facture_vente"
             elif any(w in tll for w in ["mecanique","atelier","entretien","reparation","2"]):
                 infos["type_facture"]="Mecanique"; infos["type"]="facture_mecanique"
-            elif any(w in tll for w in ["carrosserie","peinture","bosselure","rayure","3"]):
+            elif any(w in tll for w in ["carrosserie","peinture","3"]):
                 infos["type_facture"]="Carrosserie"; infos["type"]="facture_carrosserie"
             elif any(w in tll for w in ["piece","rechange","accessoire","4"]):
                 infos["type_facture"]="Pieces de rechange"; infos["type"]="facture_pieces"
             else:
-                return "Quel type de facture ?\n\n1. Achat vehicule (VN/VO)\n2. Atelier mecanique\n3. Carrosserie\n4. Pieces de rechange", False
-            sess["step"]=2; return "Votre numero de chassis ou matricule ?", False
+                return "Quel type de facture ?\n1. Achat vehicule (VN/VO)\n2. Mecanique\n3. Carrosserie\n4. Pieces de rechange", False
+            sess["step"]=2; return "Numero de chassis ou matricule ?", False
         elif step == 2:
             infos["chassis"]=nettoyer(tl).upper(); sess["step"]=3
-            return "Prenom du titulaire de la facture ?", False
+            return "Prenom du titulaire ?", False
         elif step == 3:
             infos["prenom"]=nettoyer(tl); sess["step"]=4
             return "Nom du titulaire ?", False
@@ -599,142 +519,159 @@ def traiter_flow(sess, tel, nom, texte):
             infos["nom"]=nettoyer(tl); sess["step"]=5
             return "Votre numero de telephone ?", False
         elif step == 5:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
-            infos["tel"]=nettoyer(tl); sess["step"]=6  # FIX: 6 pas 5
-            return recap_texte(infos, flow), False
+            if not valider_tel(tl): return "Numero invalide (ex: 0612345678).", False
+            infos["tel"]=nettoyer(tl); sess["step"]=6
+            return recap(infos), False
         elif step == 6:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan"]):
+            if is_oui(tl):
                 ok = enregistrer(tel, sess["langue"], infos)
-                notifier_conseiller(tel, nom, infos)
+                notifier(tel, nom, infos)
                 reset_flow(sess)
-                msg = f"Votre demande de facture ({infos.get('type_facture','')}) a ete enregistree. Notre equipe vous contactera rapidement."
-                if not ok: msg += "\n\nNote : incident technique. Un conseiller vous contactera."
+                msg = f"Demande facture ({infos.get('type_facture','')}) enregistree. Notre equipe vous contactera."
+                if not ok: msg += " (incident technique, un conseiller vous contactera)"
                 return msg + "\n\nMerci pour votre confiance.", True
-            elif any(w in tl.lower() for w in ["non","no","la","modifier","changer"]):
-                sess["step"]=7; return "Quelle info modifier ? (type / chassis / prenom / nom / telephone)", False
-            else: return "Repondez Oui ou Non.\n\n" + recap_texte(infos, flow), False
+            elif is_refus(tl):
+                sess["step"]=7; return "Quelle info modifier ? (type/chassis/prenom/nom/telephone)", False
+            else: return "Oui ou Non ?\n\n" + recap(infos), False
         elif step == 7:
             tll=tl.lower()
-            if "type" in tll or "facture" in tll:
-                infos.pop("type_facture",None); infos.pop("type",None); sess["step"]=1
-                return "Quel type ?\n1. Achat\n2. Mecanique\n3. Carrosserie\n4. Pieces", False
-            elif "chassis" in tll or "matricule" in tll: sess["step"]=2; return "Chassis ?", False
+            if "type" in tll: infos.pop("type_facture",None); infos.pop("type",None); sess["step"]=1; return "Quel type ?\n1.Vente\n2.Mecanique\n3.Carrosserie\n4.Pieces", False
+            elif "chassis" in tll: sess["step"]=2; return "Chassis ?", False
             elif "prenom" in tll: sess["step"]=3; return "Prenom ?", False
             elif "nom" in tll: sess["step"]=4; return "Nom ?", False
-            elif "telephone" in tll or "tel" in tll: sess["step"]=5; return "Telephone ?", False
+            elif "tel" in tll or "telephone" in tll: sess["step"]=5; return "Telephone ?", False
             else: return "Precisez : type, chassis, prenom, nom ou telephone.", False
 
-    # RECLAMATION
+    # ==== RECLAMATION ====
     elif flow == "reclamation":
         if step == 1:
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre nom ?", False
         elif step == 2:
-            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre numero de telephone ?", False
+            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre telephone ?", False
         elif step == 3:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide (ex: 0612345678).", False
             infos["tel"]=nettoyer(tl); sess["step"]=4
-            return "Numero de chassis ou plaque (si applicable, sinon tapez 'non') ?", False
+            return "Numero de chassis ou plaque (tapez 'non' si pas applicable) ?", False
         elif step == 4:
             if tl.lower() not in ["non","no","la","pas","n/a"]:
                 infos["chassis"]=nettoyer(tl).upper()
-            sess["step"]=5; return "Decrivez votre reclamation en detail :", False
+            sess["step"]=5; return "Decrivez votre reclamation :", False
         elif step == 5:
             infos["reclamation"]=nettoyer(tl); infos["type"]="reclamation"; sess["step"]=6
-            return recap_texte(infos, flow), False
+            return recap(infos), False
         elif step == 6:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","confirme","d'accord","mzyan"]):
+            if is_oui(tl):
                 ok = enregistrer(tel, sess["langue"], infos)
-                notifier_conseiller(tel, nom, infos)
+                notifier(tel, nom, infos)
                 reset_flow(sess)
-                msg = "Votre reclamation a ete enregistree et transmise a notre responsable qualite. Reponse sous 48 heures ouvrees."
-                if not ok: msg += "\n\nNote : incident technique. Un conseiller vous contactera."
+                msg = "Reclamation enregistree et transmise au responsable qualite. Reponse sous 48h ouvrees."
+                if not ok: msg += " (incident technique, un conseiller vous contactera)"
                 return msg + "\n\nMerci pour votre confiance.", True
-            elif any(w in tl.lower() for w in ["non","no","la","modifier","changer"]):
+            elif is_refus(tl):
                 sess["step"]=7; return "Quelle info modifier ? (prenom/nom/telephone/chassis/description)", False
-            else: return "Repondez Oui ou Non.\n\n" + recap_texte(infos, flow), False
+            else: return "Oui ou Non ?\n\n" + recap(infos), False
         elif step == 7:
             tll=tl.lower()
             if "prenom" in tll: sess["step"]=1; return "Votre prenom ?", False
             elif "nom" in tll: sess["step"]=2; return "Votre nom ?", False
-            elif "telephone" in tll or "tel" in tll: sess["step"]=3; return "Votre telephone ?", False
-            elif "chassis" in tll: sess["step"]=4; return "Numero de chassis ?", False
+            elif "tel" in tll or "telephone" in tll: sess["step"]=3; return "Votre telephone ?", False
+            elif "chassis" in tll: sess["step"]=4; return "Chassis ?", False
             elif "description" in tll or "reclamation" in tll: sess["step"]=5; return "Decrivez votre reclamation :", False
-            else: return "Precisez : prenom, nom, telephone, chassis ou description.", False
+            else: return "Precisez l'info a modifier.", False
 
-    # SAV
+    # ==== SAV ====
     elif flow == "sav":
         if step == 1:
-            if is_refus(tl):
-                reset_flow(sess)
-                lien = "https://top-auto.ma/Entretienr%C3%A9paration"
-                return f"Tres bien. Pour votre RDV atelier : {lien}\n\nMerci pour votre confiance.", True
+            if is_refus(tl): reset_flow(sess); return "Tres bien. RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.", True
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre nom ?", False
         elif step == 2:
-            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre numero de telephone ?", False
+            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre telephone ?", False
         elif step == 3:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide.", False
             infos["tel"]=nettoyer(tl); infos["type"]="sav_atelier"; sess["step"]=4
-            return recap_texte(infos, flow), False
+            return recap(infos), False
         elif step == 4:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","confirme","d'accord","mzyan"]):
-                ok = enregistrer(tel, sess["langue"], infos)
-                notifier_conseiller(tel, nom, infos)
+            if is_oui(tl):
+                enregistrer(tel, sess["langue"], infos)
+                notifier(tel, nom, infos)
                 reset_flow(sess)
-                return ("Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\n"
-                        "Votre demande a ete transmise. Notre equipe vous contactera.\n\nMerci pour votre confiance."), True
-            else: return recap_texte(infos, flow), False
+                return "RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nVotre demande a ete transmise. Notre equipe vous contactera.\n\nMerci pour votre confiance.", True
+            else: return recap(infos), False
 
-    # VN
+    # ==== VN ====
     elif flow == "vn":
         if step == 1:
-            if is_refus(tl):
-                reset_flow(sess)
-                return "Tres bien. Vous pouvez nous contacter au 0523303194 ou visiter notre concession. Merci pour votre confiance.", True
-            infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre numero de telephone ?", False
+            if is_refus(tl): reset_flow(sess); return "Tres bien. Contactez-nous au 0523303194. Merci pour votre confiance.", True
+            infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre telephone ?", False
         elif step == 2:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide.", False
             infos["tel"]=nettoyer(tl); infos["type"]="vn"
             enregistrer(tel, sess["langue"], infos)
-            notifier_conseiller(tel, nom, infos)
+            notifier(tel, nom, infos)
             reset_flow(sess)
-            return "Merci ! Notre conseiller vous contactera tres prochainement. Merci pour votre confiance.", True
+            return "Merci ! Notre conseiller vous contactera avec le meilleur tarif personnalise.\n\nMerci pour votre confiance.", True
 
-    # VO
+    # ==== VO ====
     elif flow == "vo":
         if step == 1:
-            if is_refus(tl):
-                reset_flow(sess)
-                return "Tres bien. Consultez notre stock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.", True
-            infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre numero de telephone ?", False
+            if is_refus(tl): reset_flow(sess); return "Tres bien. Stock occasion : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.", True
+            infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre telephone ?", False
         elif step == 2:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide.", False
             infos["tel"]=nettoyer(tl); infos["type"]="vo"
             enregistrer(tel, sess["langue"], infos)
-            notifier_conseiller(tel, nom, infos)
+            notifier(tel, nom, infos)
             reset_flow(sess)
-            return "Merci ! Notre conseiller VO vous contactera rapidement.\nStock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.", True
+            return "Merci ! Notre conseiller VO vous contactera.\nStock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.", True
 
-    # MAINLEVEE
+    # ==== MAINLEVEE ====
     elif flow == "mainlevee":
         if step == 1:
+            if is_refus(tl): reset_flow(sess); return "D'accord. Merci pour votre confiance.", True
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return "Votre nom ?", False
         elif step == 2:
-            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre numero de telephone ?", False
+            infos["nom"]=nettoyer(tl); sess["step"]=3; return "Votre telephone ?", False
         elif step == 3:
-            if not valider_tel(tl): return "Numero invalide. Format : 0612345678.", False
+            if not valider_tel(tl): return "Numero invalide.", False
             infos["tel"]=nettoyer(tl); sess["step"]=4; return "Votre numero de chassis ?", False
         elif step == 4:
             infos["chassis"]=nettoyer(tl).upper(); infos["type"]="mainlevee"; sess["step"]=5
-            return recap_texte(infos, flow), False
+            return recap(infos), False
         elif step == 5:
-            if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","confirme","d'accord","mzyan"]):
-                ok = enregistrer(tel, sess["langue"], infos)
-                notifier_conseiller(tel, nom, infos)
+            if is_oui(tl):
+                enregistrer(tel, sess["langue"], infos)
+                notifier(tel, nom, infos)
                 reset_flow(sess)
-                return "Votre demande de mainlevee a ete enregistree. Notre equipe SAV vous contactera sous 24-48h.\n\nMerci pour votre confiance.", True
-            else: return recap_texte(infos, flow), False
+                return "Demande de mainlevee enregistree. Notre equipe SAV vous contactera sous 24-48h.\n\nMerci pour votre confiance.", True
+            else: return recap(infos), False
 
     return None, False
+
+# ============================================================
+# DETECTION INTENTIONS
+# ============================================================
+def detecter_flux(tl):
+    """Détecte l'intention du client par mots-clés — retourne le flux ou None"""
+    # RDI — mots entiers uniquement pour eviter faux positifs (kardian, etc.)
+    mots = tl.split()
+    if any(w == "rdi" for w in mots) or \
+       any(w in tl for w in ["recepisse","récépissé","depot immatriculation","carte grise en attente","autorisation provisoire"]):
+        return "rdi"
+    if any(w in tl for w in ["essai","test drive","tester un vehicule","essayer le","essayer la"]):
+        return "essai"
+    if any(w in tl for w in ["facture","reçu","recu"]):
+        return "facture"
+    if any(w in tl for w in ["mainlevee","mainlevée","main levee","main-levee"]):
+        return "mainlevee"
+    if any(w in tl for w in ["reclamation","réclamation","plainte","insatisfait"]):
+        return "reclamation"
+    if any(w in tl for w in ["rdv","rendez-vous","rendez vous"]) and \
+       any(w in tl for w in ["atelier","reparation","entretien","mecanique"]):
+        return "sav"
+    if any(w in tl for w in ["occasion","d'occasion","vo"]) and \
+       not any(w in tl for w in ["neuf","nouveau","vn"]):
+        return "vo_info"
+    return None
 
 # ============================================================
 # WEBHOOK
@@ -755,9 +692,9 @@ def receive():
         if not msgs:
             return jsonify({"status":"ok"}), 200
 
+        # Déduplication
         msg_id = msgs[0].get("id","")
         if msg_id and msg_id in processed_ids:
-            print(f"[DUP] {msg_id}")
             return jsonify({"status":"ok"}), 200
         if msg_id:
             processed_ids.add(msg_id)
@@ -775,7 +712,7 @@ def receive():
             wa_text(tel, "Message vocal recu, transcription en cours...")
             mid = msg.get("audio",{}).get("id")
             if not mid:
-                wa_text(tel, "Impossible de traiter ce vocal. Merci d'ecrire votre demande.")
+                wa_text(tel, "Impossible de traiter ce vocal. Merci d'ecrire.")
                 return jsonify({"status":"ok"}), 200
             h = {"Authorization": f"Bearer {tok}"}
             ru = requests.get(f"https://graph.facebook.com/v20.0/{mid}", headers=h, timeout=10)
@@ -798,7 +735,7 @@ def receive():
             if not mid:
                 wa_text(tel, "Impossible d'analyser. Merci pour votre confiance.")
                 return jsonify({"status":"ok"}), 200
-            h  = {"Authorization": f"Bearer {tok}"}
+            h = {"Authorization": f"Bearer {tok}"}
             ru = requests.get(f"https://graph.facebook.com/v20.0/{mid}", headers=h, timeout=10)
             ri = requests.get(ru.json().get("url"), headers=h, timeout=20)
             analyse = groq_vision(base64.b64encode(ri.content).decode(), mime)
@@ -819,65 +756,26 @@ def receive():
             texte = br.get("title","")
             sess = get_sess(tel)
 
-            if bid == "btn_vehicules": wa_menu_veh(tel); return jsonify({"status":"ok"}), 200
-            elif bid == "btn_sav":
-                reset_flow(sess)
-                wa_text(tel, "Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous laisser vos coordonnees pour etre rappele ?")
-                wa_btns(tel, "Laisser mes coordonnees ?",
-                    [{"id":"btn_sav_oui","title":"Oui, me rappeler"},
-                     {"id":"btn_sav_non","title":"Non, merci"}])
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_sav_oui":
-                reset_flow(sess); sess["flow"]="sav"; sess["step"]=1
-                wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
-            elif bid == "btn_sav_non":
-                reset_flow(sess)
-                wa_text(tel, "Tres bien. Merci pour votre confiance.")
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_autre": wa_menu_autre(tel); return jsonify({"status":"ok"}), 200
-            elif bid == "btn_vn":
-                reset_flow(sess)
-                wa_text(tel, CATALOGUE + "\n\nPour un tarif personnalise, notre conseiller vous contactera.\nPuis-je noter votre prenom ?")
-                sess["flow"]="vn"; sess["step"]=1; return jsonify({"status":"ok"}), 200
-            elif bid == "btn_vo":
-                reset_flow(sess)
-                wa_text(tel, "Stock occasion : https://top-auto.ma/Voitures_occasion\n\nPour une mise en relation conseiller VO, puis-je noter votre prenom ?")
-                sess["flow"]="vo"; sess["step"]=1; return jsonify({"status":"ok"}), 200
-            elif bid == "btn_essai":
-                reset_flow(sess); sess["flow"]="essai"; sess["step"]=1
-                wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
-            elif bid == "btn_facture":
-                reset_flow(sess); sess["flow"]="facture"; sess["step"]=1
-                wa_text(tel, "Quel type de facture ?\n\n1. Achat vehicule (VN/VO)\n2. Atelier mecanique\n3. Carrosserie\n4. Pieces de rechange")
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_mainlevee":
-                reset_flow(sess)
-                wa_text(tel,
-                    "Pour votre demande de mainlevee, presentez-vous en concession avec :\n\n"
-                    "• Copie de la CIN\n• Copie de la carte grise\n"
-                    "• Releve bancaire cachete (dernier prelevement RCI Finance)\n"
-                    "• Justificatif valeur residuelle (si applicable)\n\n"
-                    "Souhaitez-vous qu'un conseiller vous contacte ?")
-                wa_btns(tel, "Etre rappele ?",
-                    [{"id":"btn_ml_oui","title":"Oui, me rappeler"},
-                     {"id":"btn_ml_non","title":"Non, merci"}])
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_ml_oui":
-                reset_flow(sess); sess["flow"]="mainlevee"; sess["step"]=1
-                wa_text(tel, "Votre prenom ?"); return jsonify({"status":"ok"}), 200
-            elif bid == "btn_ml_non":
-                reset_flow(sess)
-                wa_text(tel, "D'accord. Merci pour votre confiance.")
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_reclamation":
-                reset_flow(sess); sess["flow"]="reclamation"; sess["step"]=1
-                wa_text(tel, "Je suis desole d'apprendre ce probleme. Votre satisfaction est notre priorite.\n\nVotre prenom, s'il vous plait ?")
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_rdv_sav":
-                wa_text(tel, "Pour votre rendez-vous :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.")
-                return jsonify({"status":"ok"}), 200
-            elif bid == "btn_autre_q":
-                wa_text(tel, "Je suis a votre ecoute. Merci pour votre confiance.")
+            # Routing boutons par ID — priorité absolue
+            btn_actions = {
+                "btn_vehicules": lambda: (wa_menu_veh(tel), None),
+                "btn_sav": lambda: (_sav_menu(tel, sess), None),
+                "btn_sav_oui": lambda: (_start_flow(sess, tel, "sav"), None),
+                "btn_sav_non": lambda: (wa_text(tel, "Tres bien. Merci pour votre confiance."), None),
+                "btn_autre": lambda: (wa_menu_autre(tel), None),
+                "btn_vn": lambda: (_start_vn(sess, tel), None),
+                "btn_vo": lambda: (_start_vo(sess, tel), None),
+                "btn_essai": lambda: (_start_flow(sess, tel, "essai"), None),
+                "btn_facture": lambda: (_start_facture(sess, tel), None),
+                "btn_mainlevee": lambda: (_mainlevee_menu(tel, sess), None),
+                "btn_ml_oui": lambda: (_start_flow(sess, tel, "mainlevee"), None),
+                "btn_ml_non": lambda: (wa_text(tel, "D'accord. Merci pour votre confiance."), None),
+                "btn_reclamation": lambda: (_start_flow(sess, tel, "reclamation"), None),
+                "btn_rdv_sav": lambda: (wa_text(tel, "RDV atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance."), None),
+                "btn_autre_q": lambda: (wa_text(tel, "Je suis a votre ecoute. Merci pour votre confiance."), None),
+            }
+            if bid in btn_actions:
+                btn_actions[bid]()
                 return jsonify({"status":"ok"}), 200
         else:
             return jsonify({"status":"ok"}), 200
@@ -887,14 +785,16 @@ def receive():
 
         print(f"\n[MSG] {tel} ({nom}): {texte[:60]}")
         sess = get_sess(tel)
-
         tl = texte.lower().strip()
+        mots = tl.split()
+
+        # Langue
         if any('\u0600' <= c <= '\u06FF' for c in texte):
             sess["langue"] = "AR"
         elif any(w in tl for w in ["bghit","wach","safi","3afak","chokran","labas","mzyan","iyeh","wah","daba","3ndkm"]):
             sess["langue"] = "DARIJA"
 
-        # FLUX ACTIF
+        # 1. FLUX ACTIF
         if sess.get("flow"):
             rep, done = traiter_flow(sess, tel, nom, texte)
             if rep:
@@ -904,127 +804,170 @@ def receive():
                 wa_text(tel, rep)
                 return jsonify({"status":"ok"}), 200
 
-        # SALUTATION INITIALE
+        # 2. SALUTATION
         saluts = ["bonjour","salam","salut","hi","hello","bonsoir","مرحبا","السلام",
                   "ahlan","bjr","bsr","coucou","sbah","msa","slm","labas","la bas"]
-        mots = tl.split()
         if not sess["hist"] and len(mots) <= 4 and any(s in tl for s in saluts):
             wa_bienvenue(tel)
             return jsonify({"status":"ok"}), 200
 
-        # TEXTES DE BOUTONS
+        # 3. TEXTES DE BOUTONS
         if tl in ["vehicules","véhicules"]: wa_menu_veh(tel); return jsonify({"status":"ok"}), 200
         if tl in ["autre demande","autre"]: wa_menu_autre(tel); return jsonify({"status":"ok"}), 200
-        if tl in ["sav & atelier","sav","sav &amp; atelier"]:
-            wa_text(tel, "Pour votre RDV atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.")
+        if tl in ["sav & atelier","sav"]:
+            wa_text(tel, "RDV atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.")
             return jsonify({"status":"ok"}), 200
 
-        # DETECTION DIRECTE
-        intent = detecter_intent_direct(texte)
-        if intent == "PRIX":
+        # 4. FAQ DIRECTES (sans LLM)
+        if any(w in tl for w in ["horaire","heure","ouvert","ferme","ouverture"]):
+            wa_text(tel, "Horaires :\n• Lun-Ven : 8h00-18h30\n• Samedi : 8h30-15h00\n• Dimanche : Ferme\n\nMerci pour votre confiance.")
+            return jsonify({"status":"ok"}), 200
+        if any(w in tl for w in ["adresse","localisation","situe","comment venir","gps"]):
+            wa_text(tel, "Adresse : Q.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia\nGPS : https://maps.google.com/?q=33.683384,-7.409769\n\nMerci pour votre confiance.")
+            return jsonify({"status":"ok"}), 200
+        if any(w in tl for w in ["suivi","avancement","mes pieces","mes travaux","ma commande"]):
+            wa_text(tel, "Pour le suivi travaux/commandes/pieces, contactez le 0523303194.\n\nMerci pour votre confiance.")
+            return jsonify({"status":"ok"}), 200
+        if any(w in tl for w in ["financement","credit","leasing","loa","mensualite"]) and \
+           not any(w in tl for w in ["prix","tarif","combien"]):
+            wa_text(tel, "Solutions de financement disponibles : Credit classique (12-72 mois), Financement ZEN, Easy Lease (LOA), Financement 0%.\n\nPour une simulation personnalisee, notre conseiller vous contactera.\nPuis-je noter votre prenom ?")
+            reset_flow(sess); sess["flow"]="vn"; sess["step"]=1
+            return jsonify({"status":"ok"}), 200
+
+        # 5. DETECTION FLUX PAR MOTS-CLES
+        flux = detecter_flux(tl)
+        if flux == "rdi":
+            reset_flow(sess); sess["flow"]="rdi"; sess["step"]=1
+            wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
+            return jsonify({"status":"ok"}), 200
+        elif flux == "essai":
+            reset_flow(sess); sess["flow"]="essai"; sess["step"]=1
+            wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
+        elif flux == "facture":
+            _start_facture(sess, tel); return jsonify({"status":"ok"}), 200
+        elif flux == "mainlevee":
+            _mainlevee_menu(tel, sess); return jsonify({"status":"ok"}), 200
+        elif flux == "reclamation":
+            _start_flow(sess, tel, "reclamation"); return jsonify({"status":"ok"}), 200
+        elif flux == "sav":
+            _sav_menu(tel, sess); return jsonify({"status":"ok"}), 200
+        elif flux == "vo_info":
+            _start_vo(sess, tel); return jsonify({"status":"ok"}), 200
+
+        if any(w in tl for w in ["moins cher","pas cher","abordable","accessible","budget"]):
+            wa_text(tel,
+                "Nos modeles les plus accessibles :\n"
+                "• Dacia Spring (electrique)\n"
+                "• Dacia Sandero Streetway\n"
+                "• Dacia Logan\n"
+                "• Renault Express\n\n"
+                "Pour les tarifs, notre conseiller vous contactera.\nPuis-je noter votre prenom ?")
+            reset_flow(sess); sess["flow"]="vn"; sess["step"]=1
+            return jsonify({"status":"ok"}), 200
+
+        if any(w in tl for w in ["prix","tarif","combien","coute","coûte","thaman"]):
             wa_text(tel, "Pour le meilleur tarif personnalise, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom ?")
             reset_flow(sess); sess["flow"]="vn"; sess["step"]=1
             return jsonify({"status":"ok"}), 200
-        if intent == "FAQ_HORAIRE":
-            wa_text(tel, "Horaires :\n\n• Lundi-Vendredi : 8h00-18h30\n• Samedi : 8h30-15h00\n• Dimanche : Ferme\n\nMerci pour votre confiance.")
-            return jsonify({"status":"ok"}), 200
-        if intent == "FAQ_ADRESSE":
-            wa_text(tel, "Adresse :\nQ.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia\n\nGPS : https://maps.google.com/?q=33.683384,-7.409769\n\nMerci pour votre confiance.")
-            return jsonify({"status":"ok"}), 200
-        if intent == "FAQ_TEL":
-            wa_text(tel, "Nos numeros :\n• Renault : 0523303194\n• Dacia : 0523303195\n• Email : contact@top-auto.ma\n\nMerci pour votre confiance.")
-            return jsonify({"status":"ok"}), 200
-        if intent == "FAQ_SUIVI":
-            wa_text(tel, "Pour le suivi travaux/commande/pieces, contactez le 0523303194.\n\nMerci pour votre confiance.")
-            return jsonify({"status":"ok"}), 200
 
-        # DETECTION FLUX PAR MOTS-CLES
-        if any(w in tl for w in ["essai","test drive","tester","conduire","essayer"]):
-            reset_flow(sess); sess["flow"]="essai"; sess["step"]=1
-            wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["moins cher","plus economique","accessible","abordable","pas cher","budget"]):
-            wa_text(tel,
-                "Nos modeles les plus accessibles :\n\n"
-                "• Dacia Spring — citadine electrique\n"
-                "• Dacia Sandero Streetway — citadine essence\n"
-                "• Dacia Logan — berline familiale\n"
-                "• Renault Express — berline economique\n\n"
-                "Pour les tarifs exacts, notre conseiller vous recontacte.\n"
-                "Puis-je noter votre prenom ?")
-            reset_flow(sess); sess["flow"]="vn"; sess["step"]=1
-            return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["facture","reçu","recu"]):
-            reset_flow(sess); sess["flow"]="facture"; sess["step"]=1
-            wa_text(tel, "Quel type de facture ?\n\n1. Achat vehicule (VN/VO)\n2. Atelier mecanique\n3. Carrosserie\n4. Pieces de rechange")
-            return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["mainlevee","mainlevée","main levee"]):
-            reset_flow(sess)
-            wa_text(tel,
-                "Pour votre demande de mainlevee, presentez-vous en concession avec :\n\n"
-                "• Copie de la CIN\n• Copie de la carte grise\n"
-                "• Releve bancaire cachete (dernier prelevement RCI Finance)\n"
-                "• Justificatif valeur residuelle (si applicable)\n\n"
-                "Souhaitez-vous etre rappele par un conseiller ?")
-            wa_btns(tel, "Etre rappele ?",
-                [{"id":"btn_ml_oui","title":"Oui, me rappeler"},
-                 {"id":"btn_ml_non","title":"Non, merci"}])
-            return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["reclamation","réclamation","plainte","probleme","insatisfait"]):
-            reset_flow(sess); sess["flow"]="reclamation"; sess["step"]=1
-            wa_text(tel, "Je suis desole d'apprendre ce probleme. Votre satisfaction est notre priorite.\n\nVotre prenom, s'il vous plait ?")
-            return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["rdv","rendez-vous","rendez vous","atelier","reparation","entretien"]):
-            wa_text(tel, "Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.")
-            return jsonify({"status":"ok"}), 200
-
-        if any(w in tl for w in ["occasion","d'occasion"]) and "vehicule" not in tl and "voiture" not in tl:
-            reset_flow(sess)
-            wa_text(tel, "Stock occasion : https://top-auto.ma/Voitures_occasion\n\nPour un conseiller VO, puis-je noter votre prenom ?")
-            sess["flow"]="vo"; sess["step"]=1; return jsonify({"status":"ok"}), 200
-
-        if not sess.get("flow") and len(mots) <= 2 and tl.replace(" ","").isalpha() and not sess["hist"]:
+        # 6. Texte court sans historique = possible prenom perdu
+        if not sess["hist"] and len(mots) <= 2 and tl.replace(" ","").isalpha():
             wa_bienvenue(tel)
             return jsonify({"status":"ok"}), 200
 
-        # APPEL GROQ
+        # 7. GROQ pour questions generales
         try:
-            rep = groq_general(sess["hist"], texte)
+            rep = groq_chat(sess["hist"], texte)
             rep = rep.strip()
             if not rep:
                 rep = "Je n'ai pas bien compris. Pouvez-vous reformuler ? Merci pour votre confiance."
         except Exception as e:
             print(f"[GROQ ERR] {e}")
-            rep = "Une erreur technique est survenue. Contactez-nous au 0523303194. Merci pour votre confiance."
+            rep = "Erreur technique. Contactez-nous au 0523303194. Merci pour votre confiance."
 
-        # Intercepter les tags retournés par Groq
-        if "RDI_FLOW" in rep:
+        # Intercepter tags Groq
+        if "##RDI##" in rep:
             reset_flow(sess); sess["flow"]="rdi"; sess["step"]=1
             wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
             return jsonify({"status":"ok"}), 200
-        if "ESSAI_FLOW" in rep:
+        if "##ESSAI##" in rep:
             reset_flow(sess); sess["flow"]="essai"; sess["step"]=1
-            wa_text(tel, "Votre prenom, s'il vous plait ?")
+            wa_text(tel, "Votre prenom, s'il vous plait ?"); return jsonify({"status":"ok"}), 200
+        if "##FACTURE##" in rep:
+            _start_facture(sess, tel); return jsonify({"status":"ok"}), 200
+        if "##RECLAMATION##" in rep:
+            _start_flow(sess, tel, "reclamation"); return jsonify({"status":"ok"}), 200
+        if "##MAINLEVEE##" in rep:
+            _mainlevee_menu(tel, sess); return jsonify({"status":"ok"}), 200
+        if "##PRIX##" in rep:
+            wa_text(tel, "Pour le meilleur tarif personnalise, notre equipe commerciale vous contactera.\n\nPuis-je noter votre prenom ?")
+            reset_flow(sess); sess["flow"]="vn"; sess["step"]=1
             return jsonify({"status":"ok"}), 200
 
         sess["hist"].append({"role":"user","content":texte})
         sess["hist"].append({"role":"assistant","content":rep})
         if len(sess["hist"]) > 10: sess["hist"] = sess["hist"][-10:]
-
         wa_text(tel, rep)
         return jsonify({"status":"ok"}), 200
 
     except Exception as e:
-        print(f"[ERREUR GLOBAL] {e}")
+        print(f"[ERREUR] {e}")
         return jsonify({"status":"error"}), 200
+
+# ============================================================
+# HELPERS BOUTONS
+# ============================================================
+def _start_flow(sess, tel, flow):
+    reset_flow(sess); sess["flow"]=flow; sess["step"]=1
+    msgs = {
+        "sav": "Votre prenom, s'il vous plait ?",
+        "essai": "Votre prenom, s'il vous plait ?",
+        "reclamation": "Je suis desole d'apprendre ce probleme. Votre satisfaction est notre priorite.\n\nVotre prenom ?",
+        "mainlevee": "Votre prenom ?",
+        "vn": "Votre prenom ?",
+        "vo": "Votre prenom ?",
+    }
+    wa_text(tel, msgs.get(flow, "Votre prenom ?"))
+
+def _start_vn(sess, tel):
+    reset_flow(sess)
+    wa_text(tel, CATALOGUE + "\n\nPour un tarif personnalise, notre conseiller vous contactera.\nPuis-je noter votre prenom ?")
+    sess["flow"]="vn"; sess["step"]=1
+
+def _start_vo(sess, tel):
+    reset_flow(sess)
+    wa_text(tel, "Stock occasion : https://top-auto.ma/Voitures_occasion\n\nPour une mise en relation avec un conseiller VO, puis-je noter votre prenom ?")
+    sess["flow"]="vo"; sess["step"]=1
+
+def _start_facture(sess, tel):
+    reset_flow(sess); sess["flow"]="facture"; sess["step"]=1
+    wa_text(tel, "Quel type de facture ?\n\n1. Achat vehicule (VN/VO)\n2. Atelier mecanique\n3. Carrosserie\n4. Pieces de rechange")
+
+def _sav_menu(tel, sess):
+    reset_flow(sess)
+    wa_text(tel, "Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous aussi laisser vos coordonnees pour etre rappele ?")
+    wa_btns(tel, "Laisser mes coordonnees ?",
+        [{"id":"btn_sav_oui","title":"Oui, me rappeler"},
+         {"id":"btn_sav_non","title":"Non, merci"}])
+
+def _mainlevee_menu(tel, sess):
+    reset_flow(sess)
+    wa_text(tel,
+        "Pour votre mainlevee, presentez-vous en concession avec :\n\n"
+        "• Copie de la CIN\n"
+        "• Copie de la carte grise\n"
+        "• Releve bancaire cachete (dernier prelevement RCI Finance)\n"
+        "• Justificatif paiement valeur residuelle (si applicable)\n\n"
+        "Pour payer la valeur residuelle :\n"
+        "RIB RCI Finance Maroc : 007 780 00000 054111 70005 29\n\n"
+        "Souhaitez-vous etre rappele par un conseiller ?")
+    wa_btns(tel, "Etre rappele ?",
+        [{"id":"btn_ml_oui","title":"Oui, me rappeler"},
+         {"id":"btn_ml_non","title":"Non, merci"}])
 
 @app.route("/", methods=["GET"])
 def home():
-    return "TopAuto WhatsApp Bot - Online", 200
+    return "TopAuto WhatsApp Bot v3.0 - Online", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
