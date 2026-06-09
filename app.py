@@ -93,16 +93,15 @@ def enregistrer(tel, langue, data):
                 data.get("prenom",""),           # C - Prénom
                 data.get("nom",""),              # D - Nom
                 data.get("tel",""),              # E - Téléphone
-                "",                              # F - Email
-                data.get("modele",""),           # G - Modèle souhaité
-                "",                              # H - Marque
-                "",                              # I - Version/Finition
-                data.get("ville",""),            # J - Ville
-                data.get("type_facture", data.get("description", data.get("reclamation",""))),  # K - Type demande
-                "WhatsApp Bot",                  # L - Source
-                "NOUVEAU",                       # M - Statut
-                tel,                             # N - Conseiller assigné (WA client)
-                langue                           # O - Notes
+                data.get("chassis",""),           # F - N° Châssis
+                data.get("type_facture",""),       # G - Type facture
+                data.get("description", data.get("reclamation","")),  # H - Motif
+                "NOUVEAU",                         # I - Statut envoi
+                "",                                # J - Date envoi
+                "WhatsApp Bot",                    # K - Agent traitant
+                 tel,                               # L - Notes (WA)
+                 langue,                            # M
+                 t,                                 # N                           # O - Notes
             ]
 
         if idx:
@@ -610,16 +609,19 @@ def traiter_flow(sess, tel, nom, texte):
             return "Votre numero de chassis ou matricule du vehicule ?", False
         elif step == 2:
             infos["chassis"] = nettoyer(tl).upper(); sess["step"] = 3
-            return "Nom du titulaire de la facture ?", False
+            return "Prenom du titulaire de la facture ?", False
         elif step == 3:
-            infos["nom"] = nettoyer(tl); sess["step"] = 4
-            return "Votre numero de telephone ?", False
+            infos["prenom"] = nettoyer(tl); sess["step"] = 4
+            return "Nom du titulaire ?", False
         elif step == 4:
+            infos["nom"] = nettoyer(tl); sess["step"] = 5
+            return "Votre numero de telephone ?", False
+        elif step == 5:
             if not valider_tel(tl):
                 return "Numero invalide. Format : 0612345678.", False
             infos["tel"] = nettoyer(tl); sess["step"] = 5
             return recap_texte(infos, flow), False
-        elif step == 5:
+        elif step == 6:
             if any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan"]):
                 ok = enregistrer(tel, sess["langue"], infos)
                 notifier_conseiller(tel, nom, infos)
@@ -632,7 +634,7 @@ def traiter_flow(sess, tel, nom, texte):
                 return "Quelle information modifier ? (type / chassis / nom / telephone)", False
             else:
                 return "Repondez Oui ou Non.\n\n" + recap_texte(infos, flow), False
-        elif step == 6:
+        elif step == 7:
             tll = tl.lower()
             if "type" in tll or "facture" in tll:
                 infos.pop("type_facture",None); infos.pop("type",None); sess["step"] = 1
