@@ -1002,11 +1002,11 @@ def receive():
             rep = "Une erreur technique est survenue. Contactez-nous au 0523303194. Merci pour votre confiance."
 
         # Intercepter les tags retournés par Groq
-        if rep.strip() == "RDI_FLOW":
+        if "RDI_FLOW" in rep:
             reset_flow(sess); sess["flow"]="rdi"; sess["step"]=1
             wa_text(tel, "Votre vehicule a-t-il ete livre il y a plus de 30 jours ? (Oui / Non)")
             return jsonify({"status":"ok"}), 200
-        if rep.strip() == "ESSAI_FLOW":
+        if "ESSAI_FLOW" in rep:
             reset_flow(sess); sess["flow"]="essai"; sess["step"]=1
             wa_text(tel, "Votre prenom, s'il vous plait ?")
             return jsonify({"status":"ok"}), 200
