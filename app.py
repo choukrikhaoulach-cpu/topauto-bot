@@ -692,6 +692,12 @@ def traiter_flow(sess, tel, nom, texte):
         if step == 1:
             if is_refus(tl): reset_flow(sess); return q("Tres bien. Contactez-nous au 0523303194.\n\nMerci pour votre confiance.",
                                                          "حسناً. اتصل بنا على 0523303194.\n\nشكراً لثقتك بنا.",lg), True
+            # Si le client envoie un numero de tel au lieu du prenom
+            if valider_tel(tl.replace(" ","")):
+                infos["prenom"]=""; infos["tel"]=nettoyer(tl); infos["type"]="vn"
+                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
+                return q("Merci ! Notre conseiller vous contactera avec le meilleur tarif personnalise.\n\nMerci pour votre confiance.",
+                         "شكراً ! سيتصل بك مستشارنا بأفضل سعر مخصص لك.\n\nشكراً لثقتك بنا.",lg), True
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
         elif step == 2:
             if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
@@ -705,6 +711,11 @@ def traiter_flow(sess, tel, nom, texte):
         if step == 1:
             if is_refus(tl): reset_flow(sess); return q("Tres bien. Stock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.",
                                                          "حسناً. المخزون : https://top-auto.ma/Voitures_occasion\n\nشكراً لثقتك بنا.",lg), True
+            if valider_tel(tl.replace(" ","")):
+                infos["prenom"]=""; infos["tel"]=nettoyer(tl); infos["type"]="vo"
+                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
+                return q("Merci ! Notre conseiller VO vous contactera.\nStock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.",
+                         "شكراً ! سيتصل بك مستشار السيارات المستعملة.\nالمخزون : https://top-auto.ma/Voitures_occasion\n\nشكراً لثقتك بنا.",lg), True
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
         elif step == 2:
             if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
