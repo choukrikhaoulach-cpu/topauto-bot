@@ -910,9 +910,9 @@ def detecter_flux(tl):
     if any(w in tl for w in ["rdv","rendez-vous","rendez vous"]) and \
        any(w in tl for w in ["atelier","reparation","entretien","mecanique"]):
         return "sav"
-    if any(w in tl for w in ["occasion","d'occasion","vo"]) and \
-       not any(w in tl for w in ["neuf","nouveau","vn"]):
-        return "vo_info"
+    if any(w in tl for w in ["occasion","d'occasion"]) or "vo" in mots:
+        if not any(w in tl for w in ["neuf","nouveau","vn"]):
+            return "vo_info"
     return None
 
 # ============================================================
@@ -1098,7 +1098,7 @@ def receive():
         elif flux == "vo_info":
             _start_vo(sess, tel); return jsonify({"status":"ok"}), 200
 
-        if any(w in tl for w in ["moins cher","pas cher","abordable","accessible","budget"]):
+        if any(w in tl for w in ["moins cher","pas cher","abordable","accessible","budget","bmlus cher","plus cher","le cher","cher chez"]) or            ("cher" in tl.split() and any(w in tl for w in ["vehicule","voiture","modele","dacia","renault"])):
             wa_text(tel,
                 "Nos modeles les plus accessibles :\n"
                 "• Dacia Spring (electrique)\n"
