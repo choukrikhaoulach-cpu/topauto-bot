@@ -386,7 +386,7 @@ def wa_bienvenue(tel, langue="FR"):
                 "- Demandes administratives\n"
                 "- Rendez-vous apres-vente\n\nComment puis-je vous aider aujourd'hui ?")
         btns = [{"id":"btn_vehicules","title":"Vehicules"},
-                {"id":"btn_sav","title":"SAV & Atelier"},
+                {"id":"btn_sav","title":"SAV Atelier"},
                 {"id":"btn_autre","title":"Autre demande"}]
     wa_btns(tel, body, btns)
 
@@ -867,8 +867,8 @@ def receive():
             sess_img = get_sess(tel)
             wa_text(tel, analyse)
             wa_btns(tel, q("Souhaitez-vous un rendez-vous atelier ?","هل تريد موعداً في الورشة ؟",sess_img.get("langue","FR")),
-                [{"id":"btn_rdv_sav","title":"Prendre RDV" if sess_img.get("langue","FR")=="FR" else "حجز موعد"},
-                 {"id":"btn_autre_q","title":"Autre question" if sess_img.get("langue","FR")=="FR" else "سؤال آخر"}])
+                [{"id":"btn_rdv_sav","title":"Prendre RDV"},
+                 {"id":"btn_autre_q","title":"Autre question"}])
             return jsonify({"status":"ok"}), 200
 
         # ---- TEXTE ----
@@ -889,8 +889,8 @@ def receive():
                 wa_text(tel, q("RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous laisser vos coordonnees ?",
                                "موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
                 wa_btns(tel, q("Laisser mes coordonnees ?","ترك معلوماتك ؟",lg),
-                    [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "نعم"},
-                     {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "لا شكراً"}])
+                    [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
+                     {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "La"}])
                 return jsonify({"status":"ok"}), 200
             elif bid == "btn_sav_oui":
                 msg_d = demarrer(sess, tel, "sav", lg); wa_text(tel, msg_d)
@@ -932,8 +932,8 @@ def receive():
                     "RIB RCI Finance Maroc : 007 780 00000 054111 70005 29\n\n"
                     "هل تريد أن يتصل بك مستشار ؟",lg))
                 wa_btns(tel, q("Etre rappele ?","أن يتصل بك مستشار ؟",lg),
-                    [{"id":"btn_ml_oui","title":"Oui, me rappeler" if lg=="FR" else "نعم"},
-                     {"id":"btn_ml_non","title":"Non, merci" if lg=="FR" else "لا شكراً"}])
+                    [{"id":"btn_ml_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
+                     {"id":"btn_ml_non","title":"Non, merci" if lg=="FR" else "La"}])
                 return jsonify({"status":"ok"}), 200
             elif bid == "btn_ml_oui":
                 msg_d = demarrer(sess, tel, "mainlevee", lg); wa_text(tel, msg_d)
@@ -1019,8 +1019,8 @@ def receive():
                 "RIB RCI Finance Maroc : 007 780 00000 054111 70005 29\n\n"
                 "هل تريد أن يتصل بك مستشار ؟",lg))
             wa_btns(tel, q("Etre rappele ?","أن يتصل بك مستشار ؟",lg),
-                [{"id":"btn_ml_oui","title":"Oui, me rappeler" if lg=="FR" else "نعم"},
-                 {"id":"btn_ml_non","title":"Non, merci" if lg=="FR" else "لا شكراً"}])
+                [{"id":"btn_ml_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
+                 {"id":"btn_ml_non","title":"Non, merci" if lg=="FR" else "La"}])
             return jsonify({"status":"ok"}), 200
 
         elif intention == "##RECLAMATION##":
@@ -1033,8 +1033,8 @@ def receive():
             wa_text(tel, q("Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous laisser vos coordonnees pour etre rappele ?",
                            "موعد الورشة :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
             wa_btns(tel, q("Laisser mes coordonnees ?","ترك معلوماتك ؟",lg),
-                [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "نعم"},
-                 {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "لا شكراً"}])
+                [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
+                 {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "La"}])
             return jsonify({"status":"ok"}), 200
 
         elif intention == "##VO##":
