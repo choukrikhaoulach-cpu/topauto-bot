@@ -22,7 +22,7 @@ CONSEILLER_TEL  = "212774057668"
 def sh_v(): return "174O6ts5GPlkafbjXOpCdmVoY0KFKPsSYXxHgfBLozu4"
 def sh_f(): return "1wxWy1nXvgUC2341XuL6jQmIiEDLTbcyzHuuVpXcYfPU"
 def sh_s(): return "1RyZpVGw1nur_UqQZ0LqOGYvJ-eAwNpBFrQ-_cX_utWA"
-    
+
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
     "vn":                  lambda: (sh_v(), "VN_Leads"),
@@ -690,12 +690,18 @@ def traiter_flow(sess, tel, nom, texte):
             else: return q("Oui ou Non ?","نعم أو لا ؟",lg)+"\n\n"+recap(infos,lg), False
         elif step == 7:
             tll=tl.lower()
-            if any(w in tll for w in ["prenom","اسم"]): sess["step"]=1; return q("Prenom ?","الاسم ؟",lg), False
-            elif any(w in tll for w in ["nom","عائلة"]): sess["step"]=2; return q("Nom ?","اسم العائلة ؟",lg), False
-            elif any(w in tll for w in ["tel","telephone","هاتف"]): sess["step"]=3; return q("Telephone ?","الهاتف ؟",lg), False
-            elif any(w in tll for w in ["chassis","هيكل"]): sess["step"]=4; return q("Chassis ?","الهيكل ؟",lg), False
-            elif any(w in tll for w in ["description","reclamation","شكاية"]): sess["step"]=5; return q("Decrivez :","صف :",lg), False
-            else: return q("Precisez.","حدد.",lg), False
+            if any(w in tll for w in ["prenom","اسم الأول","smit"]): sess["step"]=1; return q("Votre prenom ?","اسمك الأول ؟",lg), False
+            elif any(w in tll for w in ["nom","عائلة","nsab"]) and not any(w in tll for w in ["prenom","اسم الأول"]): sess["step"]=2; return q("Votre nom ?","اسم العائلة ؟",lg), False
+            elif any(w in tll for w in ["tel","telephone","هاتف","numero"]): sess["step"]=3; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
+            elif any(w in tll for w in ["chassis","هيكل","plaque","matricule"]): sess["step"]=4; return q("Chassis ?","الهيكل ؟",lg), False
+            elif any(w in tll for w in ["description","reclamation","شكاية","reclamation","modifier la reclamation","changer"]):
+                sess["step"]=5; return q("Decrivez votre reclamation :","صف شكواك :",lg), False
+            elif len(tl.split()) >= 4:
+                # Texte long = nouvelle description directe
+                infos["reclamation"]=nettoyer(tl); sess["step"]=6
+                return recap(infos,lg), False
+            else: return q("Precisez ce que vous souhaitez modifier : prenom, nom, telephone, chassis ou reclamation.",
+                           "حدد ما تريد تغييره : الاسم، اسم العائلة، الهاتف، الهيكل أو الشكاية.",lg), False
 
     # ==== SAV ====
     elif flow == "sav":
