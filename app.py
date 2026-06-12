@@ -961,6 +961,7 @@ def receive():
         sess = get_sess(tel)
 
         # Détecter la langue
+        tl = texte.lower().strip()
         lg = detect_langue(texte)
         if lg != sess.get("langue","FR"):
             sess["langue"] = lg
