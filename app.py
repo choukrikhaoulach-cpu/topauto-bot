@@ -351,18 +351,18 @@ def wa_text(tel, msg):
         headers={"Authorization": f"Bearer {wa_tok()}", "Content-Type": "application/json"},
         json={"messaging_product": "whatsapp", "to": tel, "type": "text", "text": {"body": msg}},
         timeout=10)
-    print(f"[WA] text {r.status_code}")
+    print(f"[WA] text {r.status_code} | {r.text[:200]}")
     return r.status_code == 200
 
 def wa_btns(tel, body, btns):
+    payload = {"messaging_product": "whatsapp", "to": tel, "type": "interactive",
+               "interactive": {"type": "button", "body": {"text": body},
+                 "action": {"buttons": [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in btns[:3]]}}}
     r = requests.post(
         f"https://graph.facebook.com/v20.0/{wa_pid()}/messages",
         headers={"Authorization": f"Bearer {wa_tok()}", "Content-Type": "application/json"},
-        json={"messaging_product": "whatsapp", "to": tel, "type": "interactive",
-              "interactive": {"type": "button", "body": {"text": body},
-                "action": {"buttons": [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in btns[:3]]}}},
-        timeout=10)
-    print(f"[WA] btns {r.status_code}")
+        json=payload, timeout=10)
+    print(f"[WA] btns {r.status_code} | {r.text[:200]}")
     return r.status_code == 200
 
 def wa_bienvenue(tel, langue="FR"):
