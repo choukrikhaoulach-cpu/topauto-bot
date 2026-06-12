@@ -22,7 +22,7 @@ CONSEILLER_TEL  = "212774057668"
 def sh_v(): return "174O6ts5GPlkafbjXOpCdmVoY0KFKPsSYXxHgfBLozu4"
 def sh_f(): return "1wxWy1nXvgUC2341XuL6jQmIiEDLTbcyzHuuVpXcYfPU"
 def sh_s(): return "1RyZpVGw1nur_UqQZ0LqOGYvJ-eAwNpBFrQ-_cX_utWA"
-
+    
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
     "vn":                  lambda: (sh_v(), "VN_Leads"),
@@ -867,7 +867,7 @@ def receive():
             wa_text(tel, analyse)
             wa_btns(tel, q("Souhaitez-vous un rendez-vous atelier ?","هل تريد موعداً في الورشة ؟",sess_img.get("langue","FR")),
                 [{"id":"btn_rdv_sav","title":"Prendre RDV"},
-                 {"id":"btn_autre_q","title":"Autre question"}])
+                 {"id":"btn_autre_q","title":"Non merci"}])
             return jsonify({"status":"ok"}), 200
 
         # ---- TEXTE ----
@@ -948,7 +948,8 @@ def receive():
                                "موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg))
                 return jsonify({"status":"ok"}), 200
             elif bid in ("btn_autre_q",):
-                wa_text(tel, q("Je suis a votre ecoute. Merci pour votre confiance.","أنا في خدمتك. شكراً لثقتك بنا.",lg))
+                wa_text(tel, q("D'accord. N'hesitez pas si vous avez d'autres questions. Merci pour votre confiance.",
+                               "حسناً. لا تتردد في السؤال. شكراً لثقتك بنا.",lg))
                 return jsonify({"status":"ok"}), 200
             return jsonify({"status":"ok"}), 200
         else:
