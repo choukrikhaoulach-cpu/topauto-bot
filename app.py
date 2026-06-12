@@ -366,17 +366,29 @@ def wa_bienvenue(tel, langue="FR"):
          {"id":"btn_sav","title":"SAV & Atelier"},
          {"id":"btn_autre","title":"Autre demande"}])
 
-def wa_menu_veh(tel):
-    wa_btns(tel, "Quelle gamme vous interesse ?",
-        [{"id":"btn_vn","title":"Vehicules Neufs"},
-         {"id":"btn_vo","title":"Vehicules Occasion"},
-         {"id":"btn_essai","title":"Essai Gratuit"}])
+def wa_menu_veh(tel, langue="FR"):
+    if langue in ["AR","DARIJA"]:
+        wa_btns(tel, "ما نوع السيارة التي تهمك ؟",
+            [{"id":"btn_vn","title":"سيارات جديدة"},
+             {"id":"btn_vo","title":"سيارات مستعملة"},
+             {"id":"btn_essai","title":"تجربة مجانية"}])
+    else:
+        wa_btns(tel, "Quelle gamme vous interesse ?",
+            [{"id":"btn_vn","title":"Vehicules Neufs"},
+             {"id":"btn_vo","title":"Vehicules Occasion"},
+             {"id":"btn_essai","title":"Essai Gratuit"}])
 
-def wa_menu_autre(tel):
-    wa_btns(tel, "Quelle est votre demande ?",
-        [{"id":"btn_facture","title":"Demande Facture"},
-         {"id":"btn_mainlevee","title":"Mainlevee"},
-         {"id":"btn_reclamation","title":"Reclamation"}])
+def wa_menu_autre(tel, langue="FR"):
+    if langue in ["AR","DARIJA"]:
+        wa_btns(tel, "ما هو طلبك ؟",
+            [{"id":"btn_facture","title":"طلب فاتورة"},
+             {"id":"btn_mainlevee","title":"رفع اليد"},
+             {"id":"btn_reclamation","title":"شكاية"}])
+    else:
+        wa_btns(tel, "Quelle est votre demande ?",
+            [{"id":"btn_facture","title":"Demande Facture"},
+             {"id":"btn_mainlevee","title":"Mainlevee"},
+             {"id":"btn_reclamation","title":"Reclamation"}])
 
 def notifier(tel, nom_wa, data):
     t = data.get("type","vn")
@@ -1044,8 +1056,8 @@ def receive():
             return jsonify({"status":"ok"}), 200
 
         # 3. TEXTES DE BOUTONS
-        if tl in ["vehicules","véhicules"]: wa_menu_veh(tel); return jsonify({"status":"ok"}), 200
-        if tl in ["autre demande","autre"]: wa_menu_autre(tel); return jsonify({"status":"ok"}), 200
+        if tl in ["vehicules","véhicules","السيارات"]: wa_menu_veh(tel, sess.get("langue","FR")); return jsonify({"status":"ok"}), 200
+        if tl in ["autre demande","autre","طلب آخر"]: wa_menu_autre(tel, sess.get("langue","FR")); return jsonify({"status":"ok"}), 200
         if tl in ["sav & atelier","sav"]:
             wa_text(tel, "RDV atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.")
             return jsonify({"status":"ok"}), 200
