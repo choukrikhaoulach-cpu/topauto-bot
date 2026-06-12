@@ -997,6 +997,57 @@ def receive():
             intention = "##GENERAL##"
 
         # 3. ROUTING PAR INTENTION
+        # --- Détection multi-intentions ---
+        # Si le message contient plusieurs services, demander lequel en priorité
+        FLUX_TAGS = {
+            "##ESSAI##":       q("Essai vehicule","تجربة سيارة",lg),
+            "##FACTURE##":     q("Facture","فاتورة",lg),
+            "##MAINLEVEE##":   q("Mainlevee","رفع اليد",lg),
+            "##RECLAMATION##": q("Reclamation","شكاية",lg),
+            "##RDI##":         q("RDI / Immatriculation","RDI / تسجيل",lg),
+            "##SAV##":         q("Rendez-vous atelier","موعد الورشة",lg),
+            "##VN##":          q("Achat vehicule neuf","شراء سيارة جديدة",lg),
+            "##VO##":          q("Vehicule occasion","سيارة مستعملة",lg),
+        }
+        # Vérifier si le message mentionne plusieurs services via le classifier rapide
+        try:
+            multi_check = classifier_intention(texte + " [compte le nombre de services demandes]", lg)
+        except:
+            multi_check = intention
+
+        # Compter les services mentionnés dans le texte original via un appel dédié
+        try:
+            multi_prompt = """Analyse ce message et reponds UNIQUEMENT avec les tags des services demandes, separes par des virgules.
+Tags possibles: ##ESSAI##, ##FACTURE##, ##MAINLEVEE##, ##RECLAMATION##, ##RDI##, ##SAV##, ##VN##, ##VO##
+Si un seul service: reponds avec ce seul tag.
+Si plusieurs services: reponds avec tous les tags separes par virgule.
+Message: """ + texte
+            key_m = cfg("GROQ_API_KEY")
+            r_m = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key_m}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile",
+                      "messages": [{"role": "user", "content": multi_prompt}],
+                      "max_tokens": 50, "temperature": 0},
+                timeout=10)
+            if r_m.status_code == 200:
+                multi_rep = r_m.json()["choices"][0]["message"]["content"].strip()
+                detected_tags = [t.strip() for t in multi_rep.split(",") if t.strip() in FLUX_TAGS]
+                print(f"[MULTI] detected={detected_tags}")
+            else:
+                detected_tags = [intention] if intention in FLUX_TAGS else []
+        except:
+            detected_tags = [intention] if intention in FLUX_TAGS else []
+
+        # Si plusieurs services détectés → demander lequel en priorité
+        if len(detected_tags) >= 2:
+            services = " / ".join([FLUX_TAGS[t] for t in detected_tags])
+            msg_fr = "Vous avez mentionne plusieurs services : " + services + ".\n\nLequel souhaitez-vous traiter en premier ?"
+            msg_ar = "ذكرت عدة خدمات : " + services + ".\n\nأيها تريد معالجته أولاً ؟"
+            rep_multi = q(msg_fr, msg_ar, lg)
+            wa_text(tel, rep_multi)
+            return jsonify({"status":"ok"}), 200
+
         if intention == "##SALUTATION##":
             # Si le client a deja une conversation en cours → simple reponse
             if sess["hist"]:
