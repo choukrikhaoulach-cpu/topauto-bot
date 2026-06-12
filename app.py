@@ -19,9 +19,9 @@ PHONE_NUMBER_ID = "1031404513398168"
 VERIFY_TOKEN    = "topauto2024secret"
 CONSEILLER_TEL  = "212774057668"
 
-def sh_v(): return "174O6ts5GPlkafbjXOpCdmVoY0KFKPsSYXxHgfBLozu4"
-def sh_f(): return "1wxWy1nXvgUC2341XuL6jQmIiEDLTbcyzHuuVpXcYfPU"
-def sh_s(): return "1RyZpVGw1nur_UqQZ0LqOGYvJ-eAwNpBFrQ-_cX_utWA"
+def sh_v(): return "1Z4ar_AxrsV2k7uytSi-K9i2OtrCWyFtiRv0U2S-nSY0"
+def sh_f(): return "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg"
+def sh_s(): return "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A"
 
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
@@ -113,19 +113,18 @@ def verifier_rdi(chassis):
         sid = sh_s()
         if not svc or not sid:
             return None
-        res = svc.spreadsheets().values().get(spreadsheetId=sid, range="RDI_Immatriculation!A:P").execute()
+        res = svc.spreadsheets().values().get(spreadsheetId=sid, range="RDI_Immatriculation!A:N").execute()
         cl = chassis.lower().strip()
         for r in res.get("values", [])[1:]:
+            # Colonne G (index 6) = N° Châssis
             if len(r) > 6 and r[6].lower().strip() == cl:
-                statut = r[10] if len(r) > 10 else "En cours"
-                date_dispo = ""
-                for ci in [11, 12, 13]:
-                    if len(r) > ci:
-                        v = r[ci].strip()
-                        if v and ("/" in v or "-" in v) and len(v) < 15:
-                            date_dispo = v
-                            break
+                # Colonne K (index 10) = Statut dossier
+                statut = r[10].strip() if len(r) > 10 and r[10].strip() else "En cours"
+                # Colonne J (index 9) = Date disponibilité
+                date_dispo = r[9].strip() if len(r) > 9 and r[9].strip() else ""
+                print(f"[RDI] Trouve chassis={chassis} statut={statut} date={date_dispo}")
                 return {"trouve": True, "statut": statut, "date_dispo": date_dispo}
+        print(f"[RDI] Chassis {chassis} non trouve")
         return {"trouve": False}
     except Exception as e:
         print(f"[RDI] ERR: {e}")
