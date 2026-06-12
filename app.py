@@ -19,9 +19,9 @@ PHONE_NUMBER_ID = "1031404513398168"
 VERIFY_TOKEN    = "topauto2024secret"
 CONSEILLER_TEL  = "212774057668"
 
-def sh_v(): return "174O6ts5GPlkafbjXOpCdmVoY0KFKPsSYXxHgfBLozu4"
-def sh_f(): return "1wxWy1nXvgUC2341XuL6jQmIiEDLTbcyzHuuVpXcYfPU"
-def sh_s(): return "1RyZpVGw1nur_UqQZ0LqOGYvJ-eAwNpBFrQ-_cX_utWA"
+def sh_v(): return "1Z4ar_AxrsV2k7uytSi-K9i2OtrCWyFtiRv0U2S-nSY0"
+def sh_f(): return "12Zwfi5H3vxKJDN---5qeZspuqwd-VjQthfe4uZrUTGg"
+def sh_s(): return "12GxqngDty_PniBNkMycGGqHD6MWrXEAYjPsRKkvLI8A"
 
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
@@ -532,26 +532,29 @@ def traiter_flow(sess, tel, nom, texte):
             return q("Votre prenom ?","اسمك الأول ؟",lg), False
         elif step == 3:
             infos["prenom"]=nettoyer(tl); sess["step"]=4
-            return q("Votre numero de chassis (VIN) ?","رقم الهيكل (VIN) ؟",lg), False
+            return q("Votre nom (nom de famille) ?","اسم العائلة ؟",lg), False
         elif step == 4:
+            infos["nom"]=nettoyer(tl); sess["step"]=5
+            return q("Votre numero de chassis (VIN) ?","رقم الهيكل (VIN) ؟",lg), False
+        elif step == 5:
             ch=tl.replace(" ","")
             if not valider_chassis(ch): return q("Chassis incomplet (min 11 caracteres).","رقم الهيكل ناقص (11 حرف على الأقل).",lg), False
-            infos["chassis"]=ch.upper(); sess["step"]=5
+            infos["chassis"]=ch.upper(); sess["step"]=6
             return (q("Votre numero RC ?","رقم السجل التجاري ؟",lg) if infos.get("type_client")=="societe"
                     else q("Votre numero de CIN ?","رقم بطاقة التعريف الوطنية ؟",lg)), False
-        elif step == 5:
+        elif step == 6:
             if infos.get("type_client")=="societe":
                 infos["rc"]=nettoyer(tl).upper()
             else:
                 cin=nettoyer(tl).upper()
                 if not valider_cin(cin): return q("Format CIN invalide (ex: BE123456).","صيغة البطاقة الوطنية غير صحيحة (مثال: BE123456).",lg), False
                 infos["cin"]=cin
-            sess["step"]=6; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
-        elif step == 6:
-            if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
-            infos["tel"]=nettoyer(tl); sess["step"]=7
-            return recap(infos,lg), False
+            sess["step"]=7; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
         elif step == 7:
+            if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
+            infos["tel"]=nettoyer(tl); sess["step"]=8
+            return recap(infos,lg), False
+        elif step == 8:
             if is_oui(tl):
                 info_rdi=verifier_rdi(infos.get("chassis",""))
                 if info_rdi is None:
@@ -561,27 +564,54 @@ def traiter_flow(sess, tel, nom, texte):
                 elif info_rdi.get("trouve"):
                     statut=info_rdi.get("statut","En cours")
                     date_d=info_rdi.get("date_dispo","")
-                    rep=q(f"Resultat :\n- Chassis : {infos['chassis']}\n- Statut : {statut}",
-                          f"النتيجة :\n- رقم الهيكل : {infos['chassis']}\n- الحالة : {statut}",lg)
-                    if date_d: rep+=q(f"\n- Date dispo : {date_d}",f"\n- تاريخ الاستعداد : {date_d}",lg)
-                    rep+=q("\n\nPour info : 0523303194.","\n\nللاستفسار : 0523303194.",lg)
+                    statut_lower = statut.lower()
+                    # Cas A : Disponible
+                    if any(w in statut_lower for w in ["disponible","pret","termine","traite","traité"]):
+                        rep=q(
+                            f"Verification dossier :\n\n"
+                            f"- Chassis : {infos['chassis']}\n"
+                            f"- Statut : {statut}\n",
+                            f"نتيجة الملف :\n\n"
+                            f"- رقم الهيكل : {infos['chassis']}\n"
+                            f"- الحالة : {statut}\n",lg)
+                        if date_d:
+                            rep+=q(f"- Date de disponibilite : {date_d}\n",
+                                   f"- تاريخ الاستعداد : {date_d}\n",lg)
+                        rep+=q("\nVotre RDI est disponible. Vous pouvez vous presenter a la concession.\n\nPour plus d\'informations : 0523303194.",
+                               "\nوصلك RDI متاح. يمكنك التوجه إلى الوكالة.\n\nللاستفسار : 0523303194.",lg)
+                    # Cas B : En cours
+                    else:
+                        rep=q(
+                            f"Verification dossier :\n\n"
+                            f"- Chassis : {infos['chassis']}\n"
+                            f"- Statut : {statut}\n",
+                            f"نتيجة الملف :\n\n"
+                            f"- رقم الهيكل : {infos['chassis']}\n"
+                            f"- الحالة : {statut}\n",lg)
+                        if date_d:
+                            rep+=q(f"- Date de disponibilite estimee : {date_d}\n",
+                                   f"- التاريخ المتوقع : {date_d}\n",lg)
+                        rep+=q("\nVotre dossier est en cours de traitement. Pour plus d\'informations : 0523303194.",
+                               "\nملفك قيد المعالجة. للاستفسار : 0523303194.",lg)
                 else:
-                    rep=q(f"Dossier chassis {infos['chassis']} pas encore enregistre. Notre equipe va verifier.",
-                          f"ملف الهيكل {infos['chassis']} غير مسجل بعد. سيتحقق فريقنا.",lg)
+                    rep=q(f"Le dossier pour le chassis {infos['chassis']} n'est pas encore enregistre dans notre systeme. Notre equipe va verifier et vous contactera tres prochainement.",
+                          f"ملف الهيكل {infos['chassis']} غير مسجل بعد في نظامنا. سيتحقق فريقنا ويتصل بك قريباً.",lg)
                     notifier(tel, nom, {**infos,"type":"rdi"})
                 reset_flow(sess)
                 return rep+q("\n\nMerci pour votre confiance.","\n\nشكراً لثقتك بنا.",lg), True
             elif is_refus(tl):
-                sess["step"]=8; return q("Quelle info modifier ?","ما المعلومة التي تريد تغييرها ؟",lg), False
+                sess["step"]=9; return q("Quelle info modifier ? (prenom/nom/chassis/cin/rc/telephone)",
+                                         "ما المعلومة التي تريد تغييرها ؟ (الاسم/اسم العائلة/الهيكل/البطاقة/السجل/الهاتف)",lg), False
             else: return q("Oui ou Non ?","نعم أو لا ؟",lg)+"\n\n"+recap(infos,lg), False
-        elif step == 8:
+        elif step == 9:
             tll=tl.lower()
-            if any(w in tll for w in ["prenom","اسم"]): sess["step"]=3; return q("Prenom ?","الاسم ؟",lg), False
-            elif any(w in tll for w in ["chassis","هيكل"]): infos.pop("chassis",None); sess["step"]=4; return q("Chassis ?","رقم الهيكل ؟",lg), False
-            elif any(w in tll for w in ["cin","بطاقة"]): infos.pop("cin",None); sess["step"]=5; return q("CIN ?","رقم البطاقة ؟",lg), False
-            elif any(w in tll for w in ["rc","سجل"]): infos.pop("rc",None); sess["step"]=5; return q("RC ?","السجل التجاري ؟",lg), False
-            elif any(w in tll for w in ["tel","telephone","هاتف"]): infos.pop("tel",None); sess["step"]=6; return q("Telephone ?","الهاتف ؟",lg), False
-            else: return q("Precisez.","حدد.",lg), False
+            if any(w in tll for w in ["prenom","smit","اسم الأول"]): sess["step"]=3; return q("Votre prenom ?","اسمك الأول ؟",lg), False
+            elif any(w in tll for w in ["nom","nsab","عائلة"]): infos.pop("nom",None); sess["step"]=4; return q("Votre nom ?","اسم العائلة ؟",lg), False
+            elif any(w in tll for w in ["chassis","هيكل"]): infos.pop("chassis",None); sess["step"]=5; return q("Chassis ?","رقم الهيكل ؟",lg), False
+            elif any(w in tll for w in ["cin","بطاقة"]): infos.pop("cin",None); sess["step"]=6; return q("CIN ?","رقم البطاقة ؟",lg), False
+            elif any(w in tll for w in ["rc","سجل"]): infos.pop("rc",None); sess["step"]=6; return q("RC ?","السجل التجاري ؟",lg), False
+            elif any(w in tll for w in ["tel","telephone","هاتف"]): infos.pop("tel",None); sess["step"]=7; return q("Telephone ?","الهاتف ؟",lg), False
+            else: return q("Precisez : prenom, nom, chassis, CIN, RC ou telephone.","حدد : الاسم، اسم العائلة، الهيكل، البطاقة، السجل أو الهاتف.",lg), False
 
     # ==== FACTURE ====
     elif flow == "facture":
