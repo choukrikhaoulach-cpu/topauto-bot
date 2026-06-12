@@ -975,6 +975,12 @@ def receive():
                 wa_text(tel, rep)
                 return jsonify({"status":"ok"}), 200
 
+        # 1b. REFUS SIMPLE sans flux actif → accusé de réception poli
+        if is_refus(tl) and not sess.get("flow") and sess["hist"]:
+            wa_text(tel, q("Tres bien. N'hesitez pas si vous avez d'autres questions. Merci pour votre confiance.",
+                           "حسناً. لا تتردد في التواصل معنا إن احتجت شيئاً. شكراً لثقتك بنا.", lg))
+            return jsonify({"status":"ok"}), 200
+
         # 2. CLASSIFIER GROQ — comprend le sens même avec fautes
         try:
             intention = classifier_intention(texte, lg)
@@ -984,7 +990,12 @@ def receive():
 
         # 3. ROUTING PAR INTENTION
         if intention == "##SALUTATION##":
-            wa_bienvenue(tel, lg)
+            # Si le client a deja une conversation en cours → simple reponse
+            if sess["hist"]:
+                wa_text(tel, q("Bonjour ! Comment puis-je vous aider ?",
+                               "مرحباً ! كيف يمكنني مساعدتك ؟", lg))
+            else:
+                wa_bienvenue(tel, lg)
             return jsonify({"status":"ok"}), 200
 
         elif intention == "##ESSAI##":
