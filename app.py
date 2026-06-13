@@ -642,7 +642,7 @@ def traiter_flow(sess, tel, nom, texte):
                         if date_d:
                             rep+=q(f"- Date de disponibilite : {date_d}\n",
                                    f"- تاريخ الاستعداد : {date_d}\n",lg)
-                        rep+=q("\nVotre RDI est disponible. Vous pouvez vous presenter a la concession.\n\nPour plus d\'informations : 0523303194.",
+                        rep+=q("\nVotre RDI est disponible. Vous pouvez vous presenter a la concession.\n\nPour plus d'informations : 0523303194.",
                                "\nوصلك RDI متاح. يمكنك التوجه إلى الوكالة.\n\nللاستفسار : 0523303194.",lg)
                     # Cas B : En cours
                     else:
@@ -656,7 +656,7 @@ def traiter_flow(sess, tel, nom, texte):
                         if date_d:
                             rep+=q(f"- Date de disponibilite estimee : {date_d}\n",
                                    f"- التاريخ المتوقع : {date_d}\n",lg)
-                        rep+=q("\nVotre dossier est en cours de traitement. Pour plus d\'informations : 0523303194.",
+                        rep+=q("\nVotre dossier est en cours de traitement. Pour plus d'informations : 0523303194.",
                                "\nملفك قيد المعالجة. للاستفسار : 0523303194.",lg)
                 else:
                     rep=q(f"Le dossier pour le chassis {infos['chassis']} n'est pas encore enregistre dans notre systeme. Notre equipe va verifier et vous contactera tres prochainement.",
@@ -772,8 +772,10 @@ def traiter_flow(sess, tel, nom, texte):
     # ==== SAV ====
     elif flow == "sav":
         if step == 1:
-            if is_refus(tl): reset_flow(sess); return q("Tres bien. RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
-                                                         "حسناً. موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg), True
+            if is_refus(tl):
+                reset_flow(sess)
+                return q("Tres bien. Pour planifier votre rendez-vous, completez notre formulaire en ligne :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
+                         "حسناً. لتحديد موعدك، يرجى تعبئة النموذج الرسمي :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg), True
             infos["prenom"]=nettoyer(tl); sess["step"]=2; return q("Votre nom ?","اسم العائلة ؟",lg), False
         elif step == 2:
             infos["nom"]=nettoyer(tl); sess["step"]=3; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
@@ -783,9 +785,9 @@ def traiter_flow(sess, tel, nom, texte):
             return recap(infos,lg), False
         elif step == 4:
             if is_oui(tl):
-                reset_flow(sess)
-                return q("Pour votre rendez-vous atelier, utilisez ce lien : https://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
-                         "لحجز موعد الورشة، استخدم هذا الرابط : https://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg), True
+                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
+                return q("Parfait ! Vos coordonnees ont ete enregistrees. Notre conseiller vous contactera pour confirmer votre rendez-vous.\n\nEn attendant, completez le formulaire de prise de RDV :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
+                         "تم تسجيل معلوماتك. سيتصل بك مستشارنا لتأكيد الموعد.\n\nفي انتظار ذلك، يرجى تعبئة نموذج الحجز :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg), True
             else: return recap(infos,lg), False
 
     # ==== VN ====
@@ -870,7 +872,8 @@ def demarrer(sess, tel, flow, langue):
         "mainlevee":  q("Votre prenom ?","اسمك الأول ؟",langue),
         "vn":         q("Votre prenom ?","اسمك الأول ؟",langue),
         "vo":         q("Votre prenom ?","اسمك الأول ؟",langue),
-        "sav":        q("Votre prenom, s'il vous plait ?","اسمك الأول، من فضلك ؟",langue),
+        "sav":        q("Pour planifier votre rendez-vous atelier, completez d'abord notre formulaire en ligne :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nPour qu'un conseiller confirme votre rendez-vous, laissez vos coordonnees. Votre prenom, s'il vous plait ?",
+                        "لتحديد موعدك في الورشة، يرجى أولاً تعبئة النموذج الرسمي :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nلتأكيد الموعد مع مستشار، اتركوا معلوماتكم. اسمك الأول ؟",langue),
     }
     return msgs.get(flow, q("Votre prenom ?","اسمك الأول ؟",langue))
 
@@ -967,8 +970,9 @@ def receive():
                 wa_menu_veh(tel, lg); return jsonify({"status":"ok"}), 200
             elif bid == "btn_sav":
                 reset_flow(sess)
-                wa_text(tel, q("RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous laisser vos coordonnees ?",
-                               "موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
+                wa_text(tel, q(
+                    "Pour planifier votre rendez-vous atelier, completez notre formulaire en ligne :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nUn conseiller vous contactera pour confirmer votre rendez-vous.\n\nSouhaitez-vous laisser vos coordonnees pour etre rappele ?",
+                    "لتحديد موعدك في الورشة، يرجى تعبئة النموذج الرسمي :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nسيتصل بك مستشار لتأكيد الموعد.\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
                 wa_btns(tel, q("Laisser mes coordonnees ?","ترك معلوماتك ؟",lg),
                     [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
                      {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "La"}])
@@ -1026,8 +1030,9 @@ def receive():
                 msg_d = demarrer(sess, tel, "reclamation", lg); wa_text(tel, msg_d)
                 return jsonify({"status":"ok"}), 200
             elif bid in ("btn_rdv_sav",):
-                wa_text(tel, q("RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
-                               "موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg))
+                wa_text(tel, q(
+                    "Pour planifier votre rendez-vous atelier, completez le formulaire :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
+                    "لتحديد الموعد، يرجى تعبئة النموذج :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg))
                 return jsonify({"status":"ok"}), 200
             elif bid in ("btn_autre_q",):
                 wa_text(tel, q("D'accord. N'hesitez pas si vous avez d'autres questions. Merci pour votre confiance.",
@@ -1186,8 +1191,9 @@ Message: """ + texte
 
         elif intention == "##SAV##":
             reset_flow(sess)
-            wa_text(tel, q("Pour votre rendez-vous atelier :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nSouhaitez-vous laisser vos coordonnees pour etre rappele ?",
-                           "موعد الورشة :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
+            wa_text(tel, q(
+                "Pour planifier votre rendez-vous atelier, completez notre formulaire en ligne :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nUn conseiller vous contactera pour confirmer votre rendez-vous.\n\nSouhaitez-vous laisser vos coordonnees pour etre rappele ?",
+                "لتحديد موعدك في الورشة، يرجى تعبئة النموذج الرسمي :\nhttps://top-auto.ma/Entretienr%C3%A9paration\n\nسيتصل بك مستشار لتأكيد الموعد.\n\nهل تريد ترك معلوماتك للتواصل ؟",lg))
             wa_btns(tel, q("Laisser mes coordonnees ?","ترك معلوماتك ؟",lg),
                 [{"id":"btn_sav_oui","title":"Oui, me rappeler" if lg=="FR" else "Oui"},
                  {"id":"btn_sav_non","title":"Non, merci" if lg=="FR" else "La"}])
