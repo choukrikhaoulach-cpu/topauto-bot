@@ -22,7 +22,7 @@ CONSEILLER_TEL  = "212774057668"
 def sh_v(): return "1rBZ5wRDIRC15K9S36b2z8fzBzXRstTvKgZiC_laZDUo"
 def sh_f(): return "1FVlAbzTja8HJ96hssSsWwgMsxr3AnnHfUFZl2BJ8wbg"
 def sh_s(): return "1km-GtARejhfsFEhO7CXnY4XQzItGf1zqYn5fzGi7UEU"
-
+    
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
     "vn":                  lambda: (sh_v(), "VN_Leads"),
@@ -797,8 +797,12 @@ def traiter_flow(sess, tel, nom, texte):
             return q("Votre nom ?","اسم العائلة ؟",lg), False
         elif step == 2:
             infos["nom"]=nettoyer(tl); sess["step"]=3
-            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+            return q("Quel modele ou type de vehicule vous interesse ? (ex: Dacia Duster, SUV, electrique...)",
+                     "ما الموديل أو نوع السيارة التي تهمك ؟ (مثال: داسيا داستر، SUV، كهربائية...)",lg), False
         elif step == 3:
+            infos["modele"]=nettoyer(tl); sess["step"]=4
+            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+        elif step == 4:
             if not valider_tel(tl): return q("Numero invalide (ex: 0612345678).","رقم غير صحيح (مثال: 0612345678).",lg), False
             infos["tel"]=nettoyer(tl); infos["type"]="vn"
             enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
@@ -814,8 +818,12 @@ def traiter_flow(sess, tel, nom, texte):
             return q("Votre nom ?","اسم العائلة ؟",lg), False
         elif step == 2:
             infos["nom"]=nettoyer(tl); sess["step"]=3
-            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+            return q("Quel type de vehicule recherchez-vous ? (ex: 5 places, SUV, diesel, budget approximatif...)",
+                     "ما نوع السيارة التي تبحث عنها ؟ (مثال: 5 مقاعد، SUV، ديزل، الميزانية التقريبية...)",lg), False
         elif step == 3:
+            infos["description"]=nettoyer(tl); sess["step"]=4
+            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+        elif step == 4:
             if not valider_tel(tl): return q("Numero invalide (ex: 0612345678).","رقم غير صحيح (مثال: 0612345678).",lg), False
             infos["tel"]=nettoyer(tl); infos["type"]="vo"
             enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
