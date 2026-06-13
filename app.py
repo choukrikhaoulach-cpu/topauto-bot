@@ -793,15 +793,13 @@ def traiter_flow(sess, tel, nom, texte):
         if step == 1:
             if is_refus(tl): reset_flow(sess); return q("Tres bien. Contactez-nous au 0523303194.\n\nMerci pour votre confiance.",
                                                          "حسناً. اتصل بنا على 0523303194.\n\nشكراً لثقتك بنا.",lg), True
-            # Si le client envoie un numero de tel au lieu du prenom
-            if valider_tel(tl.replace(" ","")):
-                infos["prenom"]=""; infos["tel"]=nettoyer(tl); infos["type"]="vn"
-                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
-                return q("Merci ! Notre conseiller vous contactera avec le meilleur tarif personnalise.\n\nMerci pour votre confiance.",
-                         "شكراً ! سيتصل بك مستشارنا بأفضل سعر مخصص لك.\n\nشكراً لثقتك بنا.",lg), True
-            infos["prenom"]=nettoyer(tl); sess["step"]=2; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
+            infos["prenom"]=nettoyer(tl); sess["step"]=2
+            return q("Votre nom ?","اسم العائلة ؟",lg), False
         elif step == 2:
-            if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
+            infos["nom"]=nettoyer(tl); sess["step"]=3
+            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+        elif step == 3:
+            if not valider_tel(tl): return q("Numero invalide (ex: 0612345678).","رقم غير صحيح (مثال: 0612345678).",lg), False
             infos["tel"]=nettoyer(tl); infos["type"]="vn"
             enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
             return q("Merci ! Notre conseiller vous contactera avec le meilleur tarif personnalise.\n\nMerci pour votre confiance.",
@@ -812,14 +810,13 @@ def traiter_flow(sess, tel, nom, texte):
         if step == 1:
             if is_refus(tl): reset_flow(sess); return q("Tres bien. Stock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.",
                                                          "حسناً. المخزون : https://top-auto.ma/Voitures_occasion\n\nشكراً لثقتك بنا.",lg), True
-            if valider_tel(tl.replace(" ","")):
-                infos["prenom"]=""; infos["tel"]=nettoyer(tl); infos["type"]="vo"
-                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
-                return q("Merci ! Notre conseiller VO vous contactera.\nStock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.",
-                         "شكراً ! سيتصل بك مستشار السيارات المستعملة.\nالمخزون : https://top-auto.ma/Voitures_occasion\n\nشكراً لثقتك بنا.",lg), True
-            infos["prenom"]=nettoyer(tl); sess["step"]=2; return q("Votre telephone ?","رقم هاتفك ؟",lg), False
+            infos["prenom"]=nettoyer(tl); sess["step"]=2
+            return q("Votre nom ?","اسم العائلة ؟",lg), False
         elif step == 2:
-            if not valider_tel(tl): return q("Numero invalide.","رقم غير صحيح.",lg), False
+            infos["nom"]=nettoyer(tl); sess["step"]=3
+            return q("Votre numero de telephone ?","رقم هاتفك ؟",lg), False
+        elif step == 3:
+            if not valider_tel(tl): return q("Numero invalide (ex: 0612345678).","رقم غير صحيح (مثال: 0612345678).",lg), False
             infos["tel"]=nettoyer(tl); infos["type"]="vo"
             enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
             return q("Merci ! Notre conseiller VO vous contactera.\nStock : https://top-auto.ma/Voitures_occasion\n\nMerci pour votre confiance.",
@@ -1040,9 +1037,20 @@ def receive():
 
         # Détecter la langue
         tl = texte.lower().strip()
-        lg = detect_langue(texte)
-        if lg != sess.get("langue","FR"):
-            sess["langue"] = lg
+        lg_detected = detect_langue(texte)
+        lg_current = sess.get("langue","FR")
+        if not sess.get("flow"):
+            # Hors flux : switcher librement selon la langue détectée
+            sess["langue"] = lg_detected
+        else:
+            # Dans un flux : switcher vers AR si le client écrit en arabe
+            # Ne pas switcher vers FR si le client donne juste un prénom/nom en latin
+            if lg_detected == "AR":
+                sess["langue"] = "AR"
+            elif lg_detected == "FR" and lg_current == "AR" and len(texte.split()) >= 5:
+                # Switcher en FR seulement si longue phrase française explicite
+                sess["langue"] = "FR"
+        lg = sess.get("langue","FR")
 
         # 1. FLUX ACTIF — traitement direct sans passer par le classifier
         if sess.get("flow"):
