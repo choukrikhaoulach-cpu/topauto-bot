@@ -19,9 +19,9 @@ PHONE_NUMBER_ID = "1031404513398168"
 VERIFY_TOKEN    = "topauto2024secret"
 CONSEILLER_TEL  = "212774057668"
 
-def sh_v(): return "174O6ts5GPlkafbjXOpCdmVoY0KFKPsSYXxHgfBLozu4"
-def sh_f(): return "1wxWy1nXvgUC2341XuL6jQmIiEDLTbcyzHuuVpXcYfPU"
-def sh_s(): return "1RyZpVGw1nur_UqQZ0LqOGYvJ-eAwNpBFrQ-_cX_utWA"
+def sh_v(): return "1rBZ5wRDIRC15K9S36b2z8fzBzXRstTvKgZiC_laZDUo"
+def sh_f(): return "1FVlAbzTja8HJ96hssSsWwgMsxr3AnnHfUFZl2BJ8wbg"
+def sh_s(): return "1km-GtARejhfsFEhO7CXnY4XQzItGf1zqYn5fzGi7UEU"
 
 SHEET_MAP = {
     "essai":               lambda: (sh_v(), "Essais_VN"),
@@ -116,11 +116,11 @@ def verifier_rdi(chassis):
         res = svc.spreadsheets().values().get(spreadsheetId=sid, range="RDI_Immatriculation!A:N").execute()
         cl = chassis.lower().strip()
         for r in res.get("values", [])[1:]:
-            # Colonne G (index 6) = N° Châssis
-            if len(r) > 6 and r[6].lower().strip() == cl:
-                # Colonne K (index 10) = Statut dossier
-                statut = r[10].strip() if len(r) > 10 and r[10].strip() else "En cours"
-                # Colonne J (index 9) = Date disponibilité
+            # Schema générique : col F (index 5) = N° Châssis
+            if len(r) > 5 and r[5].lower().strip() == cl:
+                # Col I (index 8) = Statut dossier
+                statut = r[8].strip() if len(r) > 8 and r[8].strip() else "En cours"
+                # Col J (index 9) = Date disponibilité
                 date_dispo = r[9].strip() if len(r) > 9 and r[9].strip() else ""
                 print(f"[RDI] Trouve chassis={chassis} statut={statut} date={date_dispo}")
                 return {"trouve": True, "statut": statut, "date_dispo": date_dispo}
@@ -172,42 +172,99 @@ def nettoyer(val):
 def is_refus(tl):
     mots = tl.lower().strip().split()
     return any(w in mots for w in ["non","no","la","pas"]) or \
-           any(w in tl.lower() for w in ["pas besoin","non merci","bghit la","no thanks"])
+           any(w in tl.lower() for w in ["pas besoin","non merci","no thanks"])
 
 def is_oui(tl):
-    return any(w in tl.lower() for w in ["oui","yes","wah","iyeh","safi","ok","correct","parfait","confirme","d'accord","mzyan","ouai","ewa","na3m","نعم","ايه"])
+    return any(w in tl.lower() for w in ["oui","yes","ok","correct","parfait","confirme","d'accord","ouai","ewa","na3m","نعم","ايه"])
 
 def detect_langue(texte):
     if any('\u0600' <= c <= '\u06FF' for c in texte):
-        tl = texte.lower()
-        if any(w in tl for w in ["bghit","wach","safi","3afak","chokran","labas","mzyan","iyeh","wah","daba","3ndkm","wash","fach","mnin","kifach","bzzaf"]):
-            return "DARIJA"
         return "AR"
     return "FR"
 
 # ============================================================
 # CATALOGUE & INFOS
 # ============================================================
-CATALOGUE = """GAMME DACIA :
-- Spring : electrique 70/100ch | batterie 24,3kWh | autonomie 220km
-- Sandero Streetway 2026 : essence/diesel | 65-102ch | ecran 10"
-- Sandero Stepway : crossover | garde au sol 17cm | 100-102ch
-- Logan : berline familiale | coffre 528L | 65-102ch
-- Jogger : break 5/7 places | coffre 1807L | HEV 140ch disponible
-- Duster 2025 : SUV | CarPlay | camera recul | 115-130ch
-- Bigster 2025 : grand SUV | toit panoramique | HEV 155ch
+CATALOGUE = """
+GAMME DACIA — Vehicules Neufs
+------------------------------
 
-GAMME RENAULT :
-- Clio 5 Ph2 / Clio 6 : citadine | 100-145ch | hybride disponible
-- Captur : SUV urbain | Google integre | ecran 10" | 100-145ch hybride
-- R5 E-Tech : 100% electrique | 120-150ch | 400km autonomie
-- Megane Sedan : berline | coffre 475L | diesel 115ch
-- Megane E-Tech : electrique | 220ch | 450km | ecran 12"
-- Arkana : coupe-SUV hybride | 145ch | 4,5L/100km
-- Austral : SUV familial | 200ch hybride | Google | full digital
-- Kardian : SUV compact | fabrique au Maroc SOMACA | camera 360
+🚗 Dacia Spring — Citadine electrique
+   Batterie 24,3 kWh | 70 ou 100 ch | Autonomie 220 km
+   Recharge AC 7kW / DC 40kW | Coffre 308L
 
-UTILITAIRES : Express Van, Trafic, Master"""
+🚗 Dacia Sandero Streetway 2026 — Citadine
+   Ecran 10 pouces | Moteurs : SCe 65ch / TCe 100ch / dCi 102ch
+   Finitions : Essential → Journey
+
+🚗 Dacia Sandero Stepway — Crossover urbain
+   Garde au sol 17 cm | TCe 100ch / dCi 102ch / CVT
+   Finitions : Essential → Extreme
+
+🚗 Dacia Logan — Berline familiale
+   Coffre 528L | SCe 65ch / TCe 100ch / dCi 102ch
+   Finitions : Essential → Journey
+
+🚗 Dacia Jogger — Break 5 ou 7 places
+   Coffre 1807L | TCe 100ch / dCi 102ch / HEV 140ch auto
+   Finitions : Essential → Extreme
+
+🚗 Dacia Duster 2025 — SUV 3e generation
+   Media Nav 8 pouces | CarPlay | Camera recul
+   Moteurs : dCi 115ch / TCe 130ch | Finitions : Essential → Extreme
+
+🚗 Dacia Bigster 2025 — Grand SUV (NOUVEAU)
+   Toit panoramique | dCi 115ch / HEV 155ch auto
+   Finitions : Essential → Journey
+
+
+GAMME RENAULT — Vehicules Neufs
+---------------------------------
+
+🚗 Renault Clio 5 Phase 2 — Citadine
+   TCe 100ch / Blue dCi 115ch / E-Tech 145ch auto
+   Finitions : Equilibre → Esprit Alpine
+
+🚗 Renault Clio 6 — Nouvelle generation
+   Design repense | TCe 100ch / E-Tech 145ch auto
+   Finitions : Equilibre → Esprit Alpine
+
+🚗 Renault Captur — SUV urbain
+   OpenR Link | Google integre | Ecran 10 pouces
+   TCe 100ch CVT / E-Tech 145ch auto | Equilibre → Esprit Alpine
+
+🚗 Renault R5 E-Tech — 100% Electrique
+   40 kWh 120ch ou 52 kWh 150ch | Autonomie 400 km | DC 100kW
+   Finitions : Evolution → Esprit Alpine
+
+🚗 Renault Megane Sedan — Berline familiale
+   Coffre 475L | Blue dCi 115ch
+   Finitions : Equilibre → Esprit Alpine
+
+🚗 Renault Megane E-Tech — Compacte electrique
+   60 kWh | 450 km | 220ch | Ecran 12 pouces | Google integre
+   Finitions : Equilibre → Iconic
+
+🚗 Renault Arkana — Coupe-SUV hybride
+   E-Tech 145ch | 4,5L/100km
+   Finitions : Techno / Esprit Alpine
+
+🚗 Renault Austral — SUV familial
+   E-Tech 200ch | OpenR Link | Google natif | Full digital
+   Finitions : Techno / Esprit Alpine
+
+🚗 Renault Kardian — SUV compact (Fabrique au Maroc)
+   Camera 360 | TCe 100ch CVT / Blue dCi 102ch
+   Finitions : Equilibre / Techno
+
+
+GAMME UTILITAIRES
+------------------
+
+🚗 Express Van : 800 kg | 3,3 m3 | dCi 75ch
+🚗 Trafic : 1400 kg | L1/L2 H1/H2 | dCi 150ch | Combi 9 places
+🚗 Master : 1700 kg | 8 a 17 m3 | dCi 145 ou 180ch
+"""
 
 INFOS_CONCESSION = """TopAuto Mohammedia — Concessionnaire agree Renault & Dacia
 Adresse : Q.I Bd Sidi Mohamed Ben Abdellah, 208000 Mohammedia
@@ -240,11 +297,8 @@ Analyse le message et reponds UNIQUEMENT avec UN SEUL tag parmi :
 ##GENERAL## — toute autre question ne correspondant a aucun tag ci-dessus
 
 IMPORTANT :
-- Comprends le sens meme avec des fautes d'orthographe ou du darija
-- "bmlus cher" = plus cher = ##PRIX##
-- "bghit ndire essai" = essai = ##ESSAI##
-- "fin kayn lmutur" = informations vehicule = ##INFO_VEH##
-- "wash 3ndkum kardian" = informations vehicule = ##INFO_VEH##
+- Comprends le sens meme avec des fautes d'orthographe
+- Les messages peuvent contenir des fautes d'orthographe ou des formulations inhabituelles
 - Reponds UNIQUEMENT le tag, rien d'autre"""
 
 def classifier_intention(texte, langue):
@@ -281,7 +335,7 @@ REGLES ABSOLUES :
 2. Repondre DIRECTEMENT sans introduction ni formule d'accueil
 3. Pas d'emoji
 4. Terminer par : Merci pour votre confiance.
-5. Repondre dans la MEME langue que le client (FR=francais, AR=arabe, DARIJA=darija marocain)
+5. Repondre dans la MEME langue que le client : francais si le client ecrit en francais, arabe si le client ecrit en arabe
 6. Pour les vehicules : donner infos techniques completes (moteurs, finitions, dimensions, equipements)
 7. Etre professionnel et chaleureux
 
@@ -294,9 +348,8 @@ INFOS CONCESSION :
 def groq_reponse(hist, texte, langue):
     key = cfg("GROQ_API_KEY")
     lang_rules = {
-        "FR":     "OBLIGATOIRE : Reponds uniquement en francais.",
-        "AR":     "إلزامي: أجب باللغة العربية الفصحى فقط.",
-        "DARIJA": "مهم: خاصك تجاوب بالدارجة المغربية فقط.",
+        "FR": "OBLIGATOIRE : Reponds uniquement en francais.",
+        "AR": "إلزامي: أجب باللغة العربية الفصحى فقط.",
     }
     system = PROMPT_GENERAL + "\n\n" + lang_rules.get(langue, lang_rules["FR"])
     msgs = [{"role": "system", "content": system}] + hist[-6:] + [{"role": "user", "content": texte}]
@@ -312,7 +365,20 @@ def groq_reponse(hist, texte, langue):
 
 def groq_vision(b64, mime):
     key = cfg("GROQ_API_KEY")
-    prompt = "Expert auto TopAuto Mohammedia. Analyse cette image: 1-Probleme visible 2-Classification(carrosserie/mecanique/electronique/pneu) 3-Gravite(faible/modere/urgent) 4-Recommandation. Concis. Termine: Merci pour votre confiance."
+    prompt = """Tu es un expert automobile de TopAuto Mohammedia.
+Analyse cette image et reponds avec ce format EXACT (utilise des tirets, pas d'etoiles) :
+
+Analyse du vehicule :
+
+- Probleme detecte : [description claire du probleme visible]
+
+- Classification : [carrosserie / mecanique / electronique / pneu / autre]
+
+- Gravite : [faible / moderee / urgente]
+
+- Recommandation : [action recommandee]
+
+Merci pour votre confiance."""
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -365,7 +431,7 @@ def wa_btns(tel, body, btns):
     return r.status_code == 200
 
 def wa_bienvenue(tel, langue="FR"):
-    if langue in ["AR","DARIJA"]:
+    if langue == "AR":
         body = ("مرحباً بك في TopAuto المحمدية، الوكيل المعتمد لرينو وداسيا.\n\n"
                 "أنا المساعد الذكي، متاح 24/7 لمساعدتك في :\n"
                 "- سيارات رينو وداسيا (جديدة ومستعملة)\n"
@@ -390,7 +456,7 @@ def wa_bienvenue(tel, langue="FR"):
     wa_btns(tel, body, btns)
 
 def wa_menu_veh(tel, langue="FR"):
-    if langue in ["AR","DARIJA"]:
+    if langue == "AR":
         wa_btns(tel, "ما نوع السيارة التي تهمك ؟",
             [{"id":"btn_vn","title":"سيارات جديدة"},
              {"id":"btn_vo","title":"سيارات مستعملة"},
@@ -402,7 +468,7 @@ def wa_menu_veh(tel, langue="FR"):
              {"id":"btn_essai","title":"Essai Gratuit"}])
 
 def wa_menu_autre(tel, langue="FR"):
-    if langue in ["AR","DARIJA"]:
+    if langue == "AR":
         wa_btns(tel, "ما هو طلبك ؟",
             [{"id":"btn_facture","title":"طلب فاتورة"},
              {"id":"btn_mainlevee","title":"رفع اليد"},
@@ -426,7 +492,7 @@ def notifier(tel, nom_wa, data):
     wa_text(wa_con(), "\n".join(lignes))
 
 def recap(data, langue="FR"):
-    if langue in ["AR","DARIJA"]:
+    if langue == "AR":
         intro = "ملخص طلبك :\n"
         labels = {"prenom":"الاسم","nom":"اسم العائلة","tel":"الهاتف",
                   "modele":"الموديل","ville":"المدينة","date_essai":"التاريخ",
@@ -450,7 +516,7 @@ def recap(data, langue="FR"):
 
 def q(fr_text, ar_text, langue):
     """Retourne la question dans la bonne langue"""
-    if langue in ["AR","DARIJA"]:
+    if langue == "AR":
         return ar_text
     return fr_text
 
@@ -717,9 +783,9 @@ def traiter_flow(sess, tel, nom, texte):
             return recap(infos,lg), False
         elif step == 4:
             if is_oui(tl):
-                enregistrer(tel, lg, infos); notifier(tel, nom, infos); reset_flow(sess)
-                return q("RDV atelier : https://top-auto.ma/Entretienr%C3%A9paration\n\nVotre demande a ete transmise. Notre equipe vous contactera.\n\nMerci pour votre confiance.",
-                         "موعد الورشة : https://top-auto.ma/Entretienr%C3%A9paration\n\nتم إرسال طلبك. سيتصل بك فريقنا.\n\nشكراً لثقتك بنا.",lg), True
+                reset_flow(sess)
+                return q("Pour votre rendez-vous atelier, utilisez ce lien : https://top-auto.ma/Entretienr%C3%A9paration\n\nMerci pour votre confiance.",
+                         "لحجز موعد الورشة، استخدم هذا الرابط : https://top-auto.ma/Entretienr%C3%A9paration\n\nشكراً لثقتك بنا.",lg), True
             else: return recap(infos,lg), False
 
     # ==== VN ====
@@ -836,25 +902,30 @@ def receive():
         nom   = value.get("contacts",[{}])[0].get("profile",{}).get("name","Client")
         mtype = msg.get("type")
         tok   = cfg("WHATSAPP_TOKEN")
+        # Langue de la session pour les erreurs précoces
+        _sess_tmp = sessions.get(msg.get("from",""), {})
+        sess_lg = _sess_tmp.get("langue","FR")
 
         # ---- AUDIO ----
         if mtype == "audio":
-            wa_text(tel, "Message vocal recu, transcription en cours...")
             mid = msg.get("audio",{}).get("id")
             if not mid:
-                wa_text(tel, "Impossible de traiter ce vocal. Merci d'ecrire.")
+                wa_text(tel, q("Impossible de traiter ce message vocal. Merci d'ecrire votre demande.",
+                               "تعذر معالجة الرسالة الصوتية. يرجى كتابة طلبك.",sess_lg))
                 return jsonify({"status":"ok"}), 200
             h = {"Authorization": f"Bearer {tok}"}
             ru = requests.get(f"https://graph.facebook.com/v20.0/{mid}", headers=h, timeout=10)
             if ru.status_code != 200:
-                wa_text(tel, "Erreur audio. Appelez le 0523303194.")
+                wa_text(tel, q("Erreur audio. Contactez-nous au 0523303194.",
+                               "خطأ صوتي. اتصل على 0523303194.","FR"))
                 return jsonify({"status":"ok"}), 200
             ra = requests.get(ru.json().get("url"), headers=h, timeout=20)
             transcrit = groq_whisper(ra.content)
             if not transcrit:
-                wa_text(tel, "Transcription impossible. Merci d'ecrire.")
+                wa_text(tel, q("Message vocal non compris. Merci d'ecrire votre demande.",
+                               "لم يُفهم الصوت. يرجى كتابة طلبك.","FR"))
                 return jsonify({"status":"ok"}), 200
-            wa_text(tel, f"J'ai entendu : \"{transcrit}\"")
+            # Traitement direct sans afficher la transcription
             texte = transcrit
 
         # ---- IMAGE ----
